@@ -7,27 +7,48 @@ import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.asset.application.AssetService;
+import dev.agenvas.asset.storage.AssetStorage;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
+import dev.agenvas.provider.application.MediaCapabilityService;
+import dev.agenvas.provider.application.MediaExecutionWorker;
+import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.support.CanvasMediaFixture;
 import dev.agenvas.task.application.DirectMediaTaskService;
+import dev.agenvas.task.application.TaskRecoveryScheduler;
 import dev.agenvas.task.application.TaskService;
+import dev.agenvas.task.domain.ProviderAttempt;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.testing.ImageAssetFixture;
-import java.util.List;
-import java.util.UUID;
+import dev.agenvas.usage.application.UsageService;
+import dev.agenvas.usage.domain.UsageEntry;
+import java.io.ByteArrayInputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Base64;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.junit.jupiter.Container;
@@ -45,12 +66,16 @@ import tools.jackson.databind.node.ObjectNode;
 class TaskMediaCompletionPostgresIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @TempDir
+    static Path storageRoot;
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+        registry.add("agenvas.credentials.master-key-base64", () -> Base64.getEncoder().encodeToString(new byte[32]));
+        registry.add("agenvas.storage.root", () -> storageRoot.toString());
     }
 
     @Autowired
@@ -70,9 +95,155 @@ class TaskMediaCompletionPostgresIT {
     @Autowired
     private AssetService assets;
     @Autowired
+    @Qualifier("configuredAssetStorage")
+    private AssetStorage storage;
+    @Autowired
     private ObjectMapper mapper;
     @Autowired
     private JdbcClient jdbc;
+    @Autowired
+    private MediaCapabilityService catalog;
+    @Autowired
+    private MediaExecutionWorker worker;
+    @Autowired
+    private UsageService usage;
+    @MockitoBean
+    private TaskRecoveryScheduler recoveryScheduler;
+
+    @ParameterizedTest
+    @CsvSource({"false, true", "true, true", "false, false"})
+    void recoversTheOriginalArchivedImageAfterTheSubmitterCrashes(boolean canceled, boolean registered)
+            throws Exception {
+        Fixture fixture = submittingSyncImage("archive-recovery-" + canceled + "-" + registered);
+        UUID ownerId = fixture.owner().userId();
+        UUID projectId = fixture.project().id();
+        UUID taskId = fixture.lease().id();
+        ProviderAttempt original = tasks.listProviderAttempts(ownerId, projectId, taskId).getFirst();
+        UUID assetId = AssetService.taskImageAssetId(taskId);
+        byte[] image = ImageAssetFixture.encoded("png", 4, 4);
+        if (registered)
+            assets.archiveTaskImage(ownerId, projectId, taskId, () -> new ByteArrayInputStream(image));
+        else
+            storage.storeImage(projectId, assetId, new ByteArrayInputStream(image));
+        // The submitter stops after archiving the bytes and before publishing the result.
+        jdbc.sql("update task set cancel_requested=:canceled, lease_until=now() - interval '1 second' where id=:id")
+                .param("canceled", canceled).param("id", taskId).update();
+
+        var start = new CyclicBarrier(2);
+        Callable<Integer> scan = () -> {
+            start.await(10, TimeUnit.SECONDS);
+            return tasks.recoverExpiredSubmissions(16);
+        };
+        try (var scanners = Executors.newFixedThreadPool(2)) {
+            var first = scanners.submit(scan);
+            var second = scanners.submit(scan);
+            assertThat(first.get(15, TimeUnit.SECONDS) + second.get(15, TimeUnit.SECONDS)).isEqualTo(1);
+        }
+
+        Task result = current(fixture);
+        assertThat(result.status()).isEqualTo(canceled ? Task.Status.CANCELED : Task.Status.SUCCEEDED);
+        assertThat(assets.get(ownerId, projectId, assetId).asset().id()).isEqualTo(assetId);
+        assertThat(tasks.listProviderAttempts(ownerId, projectId, taskId)).singleElement().satisfies(attempt -> {
+            assertThat(attempt.id()).isEqualTo(original.id());
+            assertThat(attempt.requestKey()).isEqualTo(original.requestKey());
+            assertThat(attempt.status()).isEqualTo(ProviderAttempt.Status.ACCEPTED);
+        });
+        var versions = artifacts.listVersions(ownerId, projectId, fixture.artifactId());
+        assertThat(versions).singleElement().satisfies(version -> {
+            assertThat(version.content().path("assetId").asText()).isEqualTo(assetId.toString());
+            assertThat(version.content().at("/parameters/providerRequestId").asText())
+                    .isEqualTo(original.requestKey().toString());
+            assertThat(card(fixture, fixture.cardId()).item().selectedVersionId())
+                    .isEqualTo(canceled ? null : version.id());
+        });
+        assertThat(jdbc.sql("select count(*) from task_late_result where task_id=:id")
+                .param("id", taskId).query(Integer.class).single()).isEqualTo(canceled ? 1 : 0);
+        assertThat(usage.listProject(ownerId, projectId)).extracting(UsageEntry::entryType)
+                .containsExactly(UsageEntry.EntryType.RESERVATION, UsageEntry.EntryType.SETTLEMENT);
+        assertThat(tasks.claimBoundMedia("next-submitter", 16)).isEmpty();
+        assertThat(tasks.claimBoundMediaPolls("next-poller", 16)).isEmpty();
+    }
+
+    @Test
+    void keepsAnExpiredSynchronousSubmissionWithoutAnArchiveUnknown() {
+        Fixture fixture = submittingSyncImage("no-archive-to-recover");
+        UUID taskId = fixture.lease().id();
+        jdbc.sql("update task set lease_until=now() - interval '1 second' where id=:id").param("id", taskId).update();
+
+        tasks.recoverExpiredSubmissions(16);
+
+        assertThat(current(fixture).status()).isEqualTo(Task.Status.UNKNOWN);
+        assertThat(tasks.listProviderAttempts(fixture.owner().userId(), fixture.project().id(), taskId))
+                .extracting(ProviderAttempt::status).containsExactly(ProviderAttempt.Status.UNKNOWN);
+        assertThat(usage.listProject(fixture.owner().userId(), fixture.project().id()))
+                .extracting(UsageEntry::entryType)
+                .containsExactly(UsageEntry.EntryType.RESERVATION);
+    }
+
+    @Test
+    void anUnavailableArchiveCanRecoverAfterTheNextExpiredSubmissionHasBeenProcessed() throws Exception {
+        Fixture missing = submittingSyncImage("archive-temporarily-unavailable");
+        UUID ownerId = missing.owner().userId();
+        UUID projectId = missing.project().id();
+        UUID taskId = missing.lease().id();
+        var archived = assets.archiveTaskImage(ownerId, projectId, taskId,
+                () -> new ByteArrayInputStream(ImageAssetFixture.encoded("png", 4, 4)));
+        Path file = assets.get(ownerId, projectId, archived.id()).path();
+        Path backup = file.resolveSibling(file.getFileName() + ".backup");
+        Fixture next = submittingSyncImage("next-expired-submission");
+        jdbc.sql("update task set lease_until=now() - interval '2 seconds' where id=:id").param("id", taskId).update();
+        jdbc.sql("update task set lease_until=now() - interval '1 second' where id=:id")
+                .param("id", next.lease().id()).update();
+
+        Files.move(file, backup);
+        try {
+            assertThat(tasks.recoverExpiredSubmissions(1)).isZero();
+            assertThat(current(missing).status()).isEqualTo(Task.Status.SUBMITTING);
+            assertThat(current(missing).nextActionAt()).isAfter(Instant.now());
+            assertThat(tasks.recoverExpiredSubmissions(1)).isEqualTo(1);
+            assertThat(current(next).status()).isEqualTo(Task.Status.UNKNOWN);
+        } finally {
+            Files.move(backup, file);
+        }
+        jdbc.sql("update task set next_action_at=:due where id=:id")
+                .param("due", Instant.now().minusSeconds(1).atOffset(ZoneOffset.UTC)).param("id", taskId).update();
+        assertThat(tasks.recoverExpiredSubmissions(1)).isEqualTo(1);
+        assertThat(current(missing).status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(settlements(missing)).isEqualTo(1);
+    }
+
+    private Fixture submittingSyncImage(String key) {
+        var connection = catalog.createConnection("archive-recovery-fixture-" + key, "Sync image " + key,
+                "OPENAI", "https://provider.invalid/v1", "synthetic-fixture");
+        var capability = catalog.publishCapability(connection.id(), "Synthetic sync result",
+                MediaAdapterRegistry.OPENAI_GPT_IMAGE_2);
+        return submitting(key, capability.id());
+    }
+
+    @Test
+    void recoversStudioArchiveUsingItsCheckpointedImageUsage() {
+        Fixture fixture = studioTask(submittingSyncImage("studio-archive-recovery"));
+        UUID ownerId = fixture.owner().userId();
+        UUID projectId = fixture.project().id();
+        UUID taskId = fixture.lease().id();
+        var attempt = tasks.listProviderAttempts(ownerId, projectId, taskId).getFirst();
+        var metadata = mapper.createObjectNode();
+        metadata.putObject("imageTokenUsage").put("inputTokens", 3).put("outputTokens", 7)
+                .put("totalTokens", 10).put("valid", true);
+        tasks.checkpointStudioImageResult(fixture.lease(), fixture.workerId(), attempt.requestKey().toString(),
+                metadata);
+        assets.archiveTaskImage(ownerId, projectId, taskId,
+                () -> new ByteArrayInputStream(ImageAssetFixture.encoded("png", 4, 4)));
+        jdbc.sql("update task set lease_until=now() - interval '1 second' where id=:id").param("id", taskId).update();
+
+        assertThat(tasks.recoverExpiredSubmissions(16)).isEqualTo(1);
+        assertThat(current(fixture).status()).isEqualTo(Task.Status.WAITING_PROVIDER);
+        assertThat(worker.pollOnce("studio-archive-recovery-poll")).isEqualTo(1);
+        Task result = current(fixture);
+        assertThat(result.status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(result.output().at("/providerUsage/totalTokens").asInt()).isEqualTo(10);
+        assertThat(count("canvas_item", projectId)).isZero();
+    }
 
     @Test
     void canceledSubmittingAndOriginalIdPollingLeasesRenewAndArchiveLateResultsWithoutSelection() {
@@ -304,12 +475,20 @@ class TaskMediaCompletionPostgresIT {
     }
 
     private Fixture submitting(String workerId) {
-        Fixture fixture = claimed(workerId);
+        return submitting(workerId, null);
+    }
+
+    private Fixture submitting(String workerId, UUID capabilityId) {
+        Fixture fixture = claimed(workerId, capabilityId);
         tasks.beginSubmission(fixture.lease(), workerId);
         return fixture;
     }
 
     private Fixture claimed(String workerId) {
+        return claimed(workerId, null);
+    }
+
+    private Fixture claimed(String workerId, UUID capabilityId) {
         AdminPrincipal owner = jdbc.sql("select id from app_user where login_name='completion-admin'")
                 .query(UUID.class).optional().map(id -> new AdminPrincipal(id, "completion-admin"))
                 .orElseGet(() -> identities.setup("completion-admin", "completion-password-123"));
@@ -318,7 +497,7 @@ class TaskMediaCompletionPostgresIT {
                 .artifact().id();
         UUID cardId = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), artifactId);
         var draft = CanvasMediaFixture.save(drafts, owner.userId(), project.id(), cardId, 0,
-                "Synthetic completion", null, null, null);
+                "Synthetic completion", null, null, capabilityId);
         Task task = direct.run(owner.userId(), project.id(), artifactId, cardId, draft.version(), workerId);
         Task lease = tasks.claimBoundMedia(workerId, 1).getFirst();
         assertThat(lease.id()).isEqualTo(task.id());

@@ -1,5 +1,9 @@
 package dev.agenvas.provider.application;
 
+import dev.agenvas.asset.domain.Asset;
+import dev.agenvas.provider.domain.AttemptContext;
+import dev.agenvas.provider.domain.KlingModels;
+import dev.agenvas.provider.domain.NativeMediaProfiles;
 import dev.agenvas.task.domain.Task;
 import java.util.UUID;
 import tools.jackson.databind.ObjectMapper;
@@ -19,6 +23,20 @@ final class MediaResult {
         content.put("workflowVersion", task.input().path("workflowVersion").asText());
         content.put("sourceTaskId", task.id().toString());
         content.putObject("parameters");
+        return content;
+    }
+
+    static ObjectNode providerContent(ObjectMapper mapper, AttemptContext attempt, Asset asset) {
+        Task task = attempt.lease();
+        ObjectNode content = content(mapper, task, asset.id(), task.input().path("prompt").asText());
+        ObjectNode parameters = copyFrozenParameters(content, task);
+        parameters.put("adapterId", attempt.binding().adapterId());
+        parameters.put("capabilityId", attempt.binding().capabilityId().toString());
+        if ((KlingModels.adapter(attempt.binding().adapterId())
+                || NativeMediaProfiles.supports(attempt.binding().adapterId())) && asset.durationMs() != null)
+            parameters.put("providerResultDurationMs", asset.durationMs());
+        parameters.put("providerRequestId",
+                attempt.originalRequestId() != null ? attempt.originalRequestId() : attempt.requestKey());
         return content;
     }
 

@@ -233,6 +233,16 @@ class ObjectStoragePostgresIT {
         assertThat(assets.archiveTaskImage(owner.userId(), project, task, () -> {
             throw new AssertionError("Already archived");
         })).isEqualTo(recovered);
+        assertThat(assets.recoverTaskImage(owner.userId(), project, task)).contains(recovered);
+        String previewKey = STORE.objects.keySet().stream()
+                .filter(key -> key.endsWith("/" + recovered.id() + ".thumb.png")).findFirst().orElseThrow();
+        var preview = STORE.objects.remove(previewKey);
+        try {
+            assertThatThrownBy(() -> assets.recoverTaskImage(owner.userId(), project, task))
+                    .isInstanceOf(IllegalStateException.class).hasMessage("Recovered archive object is missing");
+        } finally {
+            STORE.objects.put(previewKey, preview);
+        }
         assertThat(STORE.networkInsideTransaction.get()).isFalse();
         assertThat(STORE.authorizations.values()).anyMatch(value -> value.startsWith("OSS4-HMAC-SHA256"))
                 .anyMatch(value -> value.startsWith("AWS4-HMAC-SHA256"));

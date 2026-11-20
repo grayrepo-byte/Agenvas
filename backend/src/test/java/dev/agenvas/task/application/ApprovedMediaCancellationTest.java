@@ -20,6 +20,7 @@ import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
+import dev.agenvas.provider.application.ArchivedMediaRecovery;
 import dev.agenvas.provider.application.PinnedMediaPublications;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.application.UsageService;
@@ -48,7 +49,8 @@ class ApprovedMediaCancellationTest {
     private final TaskService service = new TaskService(runs, mock(ProjectService.class),
             mock(ArtifactService.class), mock(MediaDraftService.class), mock(CanvasService.class),
             repository, new TaskProperties(null, 0), events, usage, mapper,
-            Clock.fixed(NOW, ZoneOffset.UTC), new ShutdownGate(), mock(PinnedMediaPublications.class));
+            Clock.fixed(NOW, ZoneOffset.UTC), new ShutdownGate(), mock(PinnedMediaPublications.class),
+            mock(ArchivedMediaRecovery.class));
 
     @BeforeEach
     void transactionStub() {

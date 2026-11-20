@@ -406,7 +406,7 @@ public class MediaExecutionWorker {
                                 .getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 Supplier<InputStream> input = () -> downloads.download(result).stream();
                 Asset asset = archiveAsset(attempt, archiveId, result.kind(), input);
-                ObjectNode content = resultContent(attempt, asset);
+                ObjectNode content = MediaResult.providerContent(mapper, attempt, asset);
                 content.withObject("parameters").put("providerOutputOrdinal", result.ordinal())
                         .put("providerOutputNodeId", result.nodeId());
                 content.withObject("parameters").set("providerUsage", manifest.usage());
@@ -426,22 +426,6 @@ public class MediaExecutionWorker {
             case AUDIO -> assets.archiveTaskAudio(attempt.ownerId(), attempt.lease().projectId(), archiveId, input);
             case VIDEO -> assets.archiveTaskVideo(attempt.ownerId(), attempt.lease().projectId(), archiveId, input);
         };
-    }
-
-    private ObjectNode resultContent(AttemptContext attempt, Asset asset) {
-        Task task = attempt.lease();
-        ObjectNode content = MediaResult.content(mapper, task, asset.id(),
-                task.input().path("prompt").asText());
-        ObjectNode parameters = MediaResult.copyFrozenParameters(content, task);
-        parameters.put("adapterId", attempt.binding().adapterId());
-        parameters.put("capabilityId", attempt.binding().capabilityId().toString());
-        if ((dev.agenvas.provider.domain.KlingModels.adapter(attempt.binding().adapterId())
-                || dev.agenvas.provider.domain.NativeMediaProfiles.supports(attempt.binding().adapterId()))
-                && asset.durationMs() != null)
-            parameters.put("providerResultDurationMs", asset.durationMs());
-        parameters.put("providerRequestId",
-                attempt.originalRequestId() != null ? attempt.originalRequestId() : attempt.requestKey());
-        return content;
     }
 
     /** Only provider result identity and layer annotations may enter public artifact content. */
@@ -506,7 +490,7 @@ public class MediaExecutionWorker {
     }
 
     private ObjectNode completedContent(AttemptContext attempt, Asset asset, tools.jackson.databind.JsonNode metadata) {
-        ObjectNode content = resultContent(attempt, asset);
+        ObjectNode content = MediaResult.providerContent(mapper, attempt, asset);
         addNativeMetadata(attempt, content, metadata);
         if (MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(attempt.binding().adapterId())
                 && metadata != null && metadata.path("imageTokenUsage").isObject())

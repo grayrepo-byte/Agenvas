@@ -22,6 +22,7 @@ import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
+import dev.agenvas.provider.application.ArchivedMediaRecovery;
 import dev.agenvas.provider.application.PinnedMediaPublications;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.application.UsageService;
@@ -55,7 +56,8 @@ class TaskProviderRecoveryTest {
     private final TaskService service = new TaskService(mock(AgentRunService.class), mock(ProjectService.class),
             mock(ArtifactService.class), mock(MediaDraftService.class), mock(CanvasService.class), repository,
             new TaskProperties(Duration.ofMinutes(30), 1), events, mock(UsageService.class), mapper,
-            Clock.fixed(NOW, ZoneOffset.UTC), new ShutdownGate(), mock(PinnedMediaPublications.class));
+            Clock.fixed(NOW, ZoneOffset.UTC), new ShutdownGate(), mock(PinnedMediaPublications.class),
+            mock(ArchivedMediaRecovery.class));
 
     private final MediaAdapterRegistry adapters = diagnosticAdapters();
 

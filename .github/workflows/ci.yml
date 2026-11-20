@@ -155,6 +155,8 @@ jobs:
         run: python3 deploy/test-compose-check.py
       - name: Verify image, source, and Mock Compose environments
         run: bash deploy/check-compose.sh
+      - name: Verify Nginx upload limits and streaming
+        run: python3 deploy/test-nginx-uploads.py
       - name: Test automatic installation secrets with isolated PostgreSQL volumes
         run: python3 deploy/test-installation-secrets.py
 

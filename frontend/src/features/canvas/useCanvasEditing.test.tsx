@@ -1,14 +1,17 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import type { PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  Canvas,
-  CanvasEditReplayRequest,
-  CanvasEditRequest,
-  CanvasEditResponse,
-  CanvasItem,
+import {
+  getCanvasEditor,
+  listCanvasItems,
+  type Canvas,
+  type CanvasEditReplayRequest,
+  type CanvasEditRequest,
+  type CanvasEditResponse,
+  type CanvasEditorState,
+  type CanvasItem,
 } from "../../shared/api/client";
 import { t } from "../../shared/i18n";
 import { server } from "../../test/server";
@@ -446,4 +449,85 @@ describe("canvas editing receipts over HTTP", () => {
       await saving;
     }
   });
+
+  it.each(["adds", "removes"] as const)(
+    "keeps newer canvas membership when a second editor %s a card and group",
+    async change => {
+      const delayed = gate();
+      const added = change === "adds";
+      const other = { ...item, id: "other-item", groupId: "other-group" };
+      const group = { id: "other-group", projectId: PROJECT, name: "Other group", collapsed: false, version: 1 };
+      const before: CanvasEditorState = { items: added ? [item] : [item, other], groups: added ? [] : [group] };
+      const edited = { ...item, x: 120, version: 4 };
+      const latest: CanvasEditorState = {
+        items: added ? [{ ...edited, x: 900, version: 5 }, other] : [{ ...edited, x: 900, version: 5 }],
+        groups: added ? [group] : [],
+      };
+      let authoritative = before;
+      let sent = false;
+      const reads: string[] = [];
+      const canvasKey = ["canvas", PROJECT];
+      const editorKey = ["canvas-editor", PROJECT];
+      server.use(
+        http.get(`/api/v1/projects/${PROJECT}/canvas/items`, () => {
+          reads.push("canvas");
+          return HttpResponse.json({ items: authoritative.items });
+        }),
+        http.get(`/api/v1/projects/${PROJECT}/canvas/editor`, () => {
+          reads.push("editor");
+          return HttpResponse.json(authoritative);
+        }),
+        http.post(URL, async ({ request }) => {
+          const input = (await request.json()) as CanvasEditRequest;
+          sent = true;
+          await delayed.promise;
+          return HttpResponse.json({ ...response(input, added ? [edited] : [edited, other]), groups: before.groups });
+        }),
+      );
+      const { wrapper, client } = setup();
+      client.setQueryData<Canvas>(canvasKey, { items: before.items });
+      client.setQueryData<CanvasEditorState>(editorKey, before);
+      const { result } = renderHook(
+        () => {
+          useQuery({ queryKey: canvasKey, queryFn: () => listCanvasItems(PROJECT), staleTime: Infinity });
+          useQuery({ queryKey: editorKey, queryFn: () => getCanvasEditor(PROJECT), staleTime: Infinity });
+          const editing = useCanvasEditing(PROJECT);
+          return useCanvasLayoutSave(PROJECT, current => current, editing.execute);
+        },
+        { wrapper },
+      );
+      const received: Canvas[] = [];
+      let saving: Promise<Canvas> | undefined;
+      let unsubscribe: (() => void) | undefined;
+      try {
+        act(() => {
+          saving = result.current.mutateAsync({ item, patch: { x: 120 } });
+        });
+        await waitFor(() => expect(sent).toBe(true));
+        authoritative = latest;
+        await act(async () => {
+          await client.refetchQueries();
+        });
+        reads.length = 0;
+        unsubscribe = client.getQueryCache().subscribe(event => {
+          if (event.type === "updated" && event.action.type === "success" && event.query.queryKey[1] === PROJECT)
+            received.push(event.query.state.data as Canvas);
+        });
+        await act(async () => {
+          delayed.release();
+          await saving;
+        });
+        expect(client.getQueryData<Canvas>(canvasKey)?.items).toEqual(latest.items);
+        expect(client.getQueryData<CanvasEditorState>(editorKey)).toEqual(latest);
+        expect(received.every(projection => projection.items.some(member => member.id === other.id) === added)).toBe(
+          true,
+        );
+        expect(reads).toEqual(expect.arrayContaining(["canvas", "editor"]));
+      } finally {
+        unsubscribe?.();
+        delayed.release();
+        await saving;
+      }
+    },
+  );
 });

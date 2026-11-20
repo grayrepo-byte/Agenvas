@@ -16,8 +16,9 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.UUID;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.function.BooleanSupplier;
 import org.springframework.http.HttpStatus;
@@ -274,22 +275,24 @@ public class AssetService {
     }
 
     /** Recovery reads installed bytes only; no provider request is made. */
-    public java.util.Optional<Asset> recoverTaskAudio(UUID ownerId, UUID projectId, UUID taskId) {
+    public Optional<Asset> recoverTaskAudio(UUID ownerId, UUID projectId, UUID taskId) {
         projects.getRetainedProject(ownerId, projectId);
         UUID id = UUID.nameUUIDFromBytes(("agenvas:task-audio:v1:" + taskId).getBytes(StandardCharsets.UTF_8));
         return storage.withTaskAudioLock(projectId, id, () -> {
             var stored = storage.recoverAudio(projectId, id);
             if (stored.isEmpty())
-                return java.util.Optional.empty();
+                return Optional.empty();
+            var file = stored.get();
+            storage.verifyRecoveredArchive(file.objectKey(), file.byteSize(), file.sha256());
             var existing = assets.find(projectId, id);
             if (existing.isPresent()) {
                 Asset asset = existing.get();
-                if (asset.mediaKind() != Asset.MediaKind.AUDIO || !asset.objectKey().equals(stored.get().objectKey())
-                        || !asset.sha256().equals(stored.get().sha256()) || asset.byteSize() != stored.get().byteSize())
+                if (asset.mediaKind() != Asset.MediaKind.AUDIO || !asset.objectKey().equals(file.objectKey())
+                        || !asset.sha256().equals(file.sha256()) || asset.byteSize() != file.byteSize())
                     throw new IllegalStateException("Audio bytes differ from READY metadata");
                 return existing;
             }
-            return java.util.Optional.of(publishAudio(ownerId, projectId, id, stored.get(), true));
+            return Optional.of(publishAudio(ownerId, projectId, id, file, true));
         });
     }
 
@@ -345,42 +348,49 @@ public class AssetService {
                 () -> archiveTaskImageLocked(ownerId, projectId, assetId, download));
     }
 
-    /** Recover only the deterministic private result already installed by this Task; never fetch a provider. */
-    public java.util.Optional<Asset> recoverTaskImage(UUID ownerId, UUID projectId, UUID taskId) {
+    /** Recovers only the bytes installed under this task's stable image identity. */
+    public Optional<Asset> recoverTaskImage(UUID ownerId, UUID projectId, UUID taskId) {
         projects.getRetainedProject(ownerId, projectId);
         UUID assetId = taskImageAssetId(taskId);
-        return storage.withTaskImageLock(projectId, assetId, () -> {
-            var stored = storage.recoverImage(projectId, assetId);
-            if (stored.isEmpty())
-                return java.util.Optional.empty();
-            // Reuse the ordinary archive's metadata/hash checks and publication without a download fallback.
-            return java.util.Optional.of(archiveTaskImageLocked(ownerId, projectId, assetId,
-                    () -> {
-                        throw new IllegalStateException("Saved task image disappeared during recovery");
-                    }));
-        });
+        return storage.withTaskImageLock(projectId, assetId,
+                () -> recoverTaskImageLocked(ownerId, projectId, assetId, true));
+    }
+
+    private Optional<Asset> recoverTaskImageLocked(UUID ownerId, UUID projectId, UUID assetId, boolean verifyObjects) {
+        var recovered = storage.recoverImage(projectId, assetId);
+        var existing = assets.find(projectId, assetId);
+        if (recovered.isEmpty()) {
+            if (existing.isPresent())
+                throw new IllegalStateException("Task image metadata exists without original file");
+            return Optional.empty();
+        }
+        LocalAssetStorage.StoredImage file = recovered.get();
+        if (verifyObjects) {
+            storage.verifyRecoveredArchive(file.objectKey(), file.byteSize(), file.sha256());
+            storage.verifyRecoveredArchive(file.thumbnailKey(), file.thumbnailByteSize(), file.thumbnailSha256());
+        }
+        if (existing.isPresent()) {
+            Asset asset = existing.get();
+            if (asset.mediaKind() != Asset.MediaKind.IMAGE
+                    || !asset.objectKey().equals(file.objectKey())
+                    || !asset.sha256().equals(file.sha256())
+                    || asset.byteSize() != file.byteSize()
+                    || !asset.thumbnailKey().equals(file.thumbnailKey())
+                    || asset.thumbnailByteSize() != file.thumbnailByteSize()
+                    || !asset.thumbnailSha256().equals(file.thumbnailSha256())) {
+                throw new IllegalStateException("Task image bytes differ from READY metadata");
+            }
+            return existing;
+        }
+        return Optional.of(publishImage(ownerId, projectId, assetId, file, true));
     }
 
     /** 锁内先核对已有元数据和文件，再下载、安装或恢复文件并发布 READY。 */
     private Asset archiveTaskImageLocked(UUID ownerId, UUID projectId, UUID assetId,
             Supplier<InputStream> download) {
-        var recovered = storage.recoverImage(projectId, assetId);
-        var existing = assets.find(projectId, assetId);
-        if (existing.isPresent()) {
-            LocalAssetStorage.StoredImage file = recovered
-                    .orElseThrow(() -> new IllegalStateException("Task image metadata exists without original file"));
-            Asset asset = existing.get();
-            if (!asset.objectKey().equals(file.objectKey())
-                    || !asset.sha256().equals(file.sha256())
-                    || asset.byteSize() != file.byteSize()
-                    || !asset.thumbnailSha256().equals(file.thumbnailSha256())) {
-                throw new IllegalStateException("Task image bytes differ from READY metadata");
-            }
-            return asset;
-        }
-        if (recovered.isPresent()) {
-            return publishImage(ownerId, projectId, assetId, recovered.get(), true);
-        }
+        var recovered = recoverTaskImageLocked(ownerId, projectId, assetId, false);
+        if (recovered.isPresent())
+            return recovered.get();
         try (InputStream input = download.get()) {
             if (input == null)
                 throw new IllegalStateException("Image download returned no stream");

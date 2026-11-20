@@ -228,6 +228,12 @@ public interface TaskRepository {
     /** 仅检查点仍过期且状态未变化时将其归为 UNKNOWN。 */
     boolean recoverExpiredSubmission(UUID taskId, Instant now);
 
+    /** A failed archive check leaves the original submission eligible for a later scan. */
+    boolean deferExpiredSubmissionRecovery(UUID taskId, Instant now, Instant retryAt);
+
+    /** Completes a verified archive against the original expired submission and request key. */
+    boolean finishRecoveredSubmission(Task current, UUID requestKey, JsonNode output, boolean canceled, Instant now);
+
     /** 找出取消后 Worker 消失、未确认停止的过期本地任务。 */
     List<ExpiredSubmission> findExpiredCanceledRunning(Instant now, int limit);
 

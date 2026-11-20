@@ -27,6 +27,7 @@ import dev.agenvas.provider.domain.NativeMediaProtocol;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
+import dev.agenvas.provider.application.ArchivedMediaRecovery;
 import dev.agenvas.provider.application.PinnedMediaPublications;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.application.UsageService;
@@ -67,7 +68,8 @@ class TaskMediaCompletionTest {
     private final PinnedMediaPublications publications = mock(PinnedMediaPublications.class);
     private final TaskService service = new TaskService(runs, projects, artifacts,
             mock(MediaDraftService.class), canvas, repository, new TaskProperties(null, 0),
-            events, usage, mapper, Clock.fixed(NOW, ZoneOffset.UTC), new ShutdownGate(), publications);
+            events, usage, mapper, Clock.fixed(NOW, ZoneOffset.UTC), new ShutdownGate(), publications,
+            mock(ArchivedMediaRecovery.class));
 
     @ParameterizedTest
     @EnumSource(InvalidResults.class)

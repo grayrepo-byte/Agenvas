@@ -13,6 +13,7 @@ import tools.jackson.databind.ObjectMapper;
 /** A deterministic audible tone, explicitly labelled; never pretends to synthesize the prompt. */
 @Component
 public final class MockAudioAdapter implements MediaAdapter {
+    static final String ADAPTER_ID = "MOCK_AUDIO";
     private static final int SAMPLE_RATE = 24000;
     private static final int DURATION_SECONDS = 3;
     private static final int HEADER_BYTES = 44;
@@ -25,7 +26,7 @@ public final class MockAudioAdapter implements MediaAdapter {
     }
     @Override
     public String adapterId() {
-        return "MOCK_AUDIO";
+        return ADAPTER_ID;
     }
     @Override
     public Submission submit(AttemptContext context) {

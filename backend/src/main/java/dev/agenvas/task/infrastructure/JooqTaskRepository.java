@@ -1182,8 +1182,7 @@ public class JooqTaskRepository
         return dsl.select(TASK.ID, TASK.PROJECT_ID, PROJECT.OWNER_ID)
                 .from(TASK)
                 .join(PROJECT).on(PROJECT.ID.eq(TASK.PROJECT_ID))
-                .where(TASK.STATUS.eq(Task.Status.SUBMITTING.name()))
-                .and(TASK.LEASE_UNTIL.le(utc(now)))
+                .where(dueExpiredSubmission(now))
                 .orderBy(TASK.LEASE_UNTIL, TASK.ID)
                 .limit(limit)
                 .fetch(record -> new ExpiredSubmission(
@@ -1206,8 +1205,7 @@ public class JooqTaskRepository
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
                 .where(TASK.ID.eq(taskId))
-                .and(TASK.STATUS.eq(Task.Status.SUBMITTING.name()))
-                .and(TASK.LEASE_UNTIL.le(utc(now)))
+                .and(dueExpiredSubmission(now))
                 .returning(TASK.STATUS).fetchOptional();
         if (changed.isEmpty()) {
             return false;
@@ -1224,6 +1222,23 @@ public class JooqTaskRepository
             throw new IllegalStateException("Missing provider attempt for recovered submission");
         }
         return true;
+    }
+
+    @Override
+    public boolean deferExpiredSubmissionRecovery(UUID taskId, Instant now, Instant retryAt) {
+        return dsl.update(TASK)
+                .set(TASK.NEXT_ACTION_AT, utc(retryAt))
+                .set(TASK.UPDATED_AT, utc(now))
+                .set(TASK.VERSION, TASK.VERSION.plus(1))
+                .where(TASK.ID.eq(taskId))
+                .and(dueExpiredSubmission(now))
+                .execute() == 1;
+    }
+
+    private Condition dueExpiredSubmission(Instant now) {
+        return TASK.STATUS.eq(Task.Status.SUBMITTING.name())
+                .and(TASK.LEASE_UNTIL.le(utc(now)))
+                .and(TASK.NEXT_ACTION_AT.le(utc(now)));
     }
 
     /** Fixed local editing is also safe to stop; ordinary Provider UNKNOWN remains untouched. */
@@ -1344,17 +1359,36 @@ public class JooqTaskRepository
     /** 同步生成结果须在提交租约仍有效时完成任务，并把对应 Provider 尝试记为已受理。 */
     @Override
     public boolean finishSubmitting(Task lease, String workerId, JsonNode output, Instant now) {
-        int changed = dsl.update(TASK)
-                .set(TASK.STATUS, Task.Status.SUCCEEDED.name())
-                .set(TASK.OUTPUT_JSON, JSONB.valueOf(output.toString()))
+        return finishArchivedSubmission(lease, output, false, now,
+                currentWorkerLease(lease.id(), workerId, lease.leaseEpoch(), now), DSL.noCondition());
+    }
+
+    @Override
+    public boolean finishRecoveredSubmission(Task current, UUID requestKey, JsonNode output, boolean canceled,
+            Instant now) {
+        return finishArchivedSubmission(current, output, canceled, now,
+                TASK.VERSION.eq(current.version()).and(TASK.LEASE_UNTIL.le(utc(now)))
+                        .and(TASK.PROVIDER_REQUEST_ID.isNull()),
+                PROVIDER_ATTEMPT.REQUEST_KEY.eq(requestKey));
+    }
+
+    private boolean finishArchivedSubmission(Task task, JsonNode output, boolean canceled, Instant now,
+            Condition taskFence, Condition attemptFence) {
+        var status = canceled ? Task.Status.CANCELED : Task.Status.SUCCEEDED;
+        var update = dsl.update(TASK).set(TASK.STATUS, status.name());
+        if (!canceled)
+            update.set(TASK.OUTPUT_JSON, JSONB.valueOf(output.toString()));
+        int changed = update
                 .set(TASK.LEASE_OWNER, (String) null)
                 .set(TASK.LEASE_UNTIL, (OffsetDateTime) null)
                 .set(TASK.COMPLETED_AT, utc(now))
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
-                .where(currentWorkerLease(lease.id(), workerId, lease.leaseEpoch(), now))
+                .where(TASK.ID.eq(task.id()))
+                .and(TASK.LEASE_EPOCH.eq(task.leaseEpoch()))
                 .and(TASK.STATUS.eq(Task.Status.SUBMITTING.name()))
-                .and(TASK.CANCEL_REQUESTED.isFalse())
+                .and(TASK.CANCEL_REQUESTED.eq(canceled))
+                .and(taskFence)
                 .execute();
         if (changed == 0) {
             return false;
@@ -1362,9 +1396,10 @@ public class JooqTaskRepository
         int attemptChanged = dsl.update(PROVIDER_ATTEMPT)
                 .set(PROVIDER_ATTEMPT.STATUS, ProviderAttempt.Status.ACCEPTED.name())
                 .set(PROVIDER_ATTEMPT.UPDATED_AT, utc(now))
-                .where(PROVIDER_ATTEMPT.TASK_ID.eq(lease.id()))
-                .and(PROVIDER_ATTEMPT.LEASE_EPOCH.eq(lease.leaseEpoch()))
+                .where(PROVIDER_ATTEMPT.TASK_ID.eq(task.id()))
+                .and(PROVIDER_ATTEMPT.LEASE_EPOCH.eq(task.leaseEpoch()))
                 .and(PROVIDER_ATTEMPT.STATUS.eq(ProviderAttempt.Status.SUBMITTING.name()))
+                .and(attemptFence)
                 .execute();
         if (attemptChanged != 1) {
             throw new IllegalStateException("Missing provider attempt for completed submission");

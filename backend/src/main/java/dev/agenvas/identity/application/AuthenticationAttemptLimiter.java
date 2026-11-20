@@ -5,7 +5,8 @@ import dev.agenvas.shared.error.ApiProblemException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.HashMap;
+import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
@@ -23,22 +24,22 @@ public class AuthenticationAttemptLimiter {
     /** 提供可控的窗口过期判断时钟。 */
     private final Clock clock;
     /** 按来源和操作标识记录窗口内失败数，成功时移除。 */
-    private final ConcurrentHashMap<String, FailureWindow> failures = new ConcurrentHashMap<>();
+    private final Map<String, FailureWindow> failures = new HashMap<>();
+    /** Keep counting new keys together until the overflow window expires, even if a slot frees up. */
+    private FailureWindow overflow;
 
     /** 注入尝试窗口所用时钟。 */
     public AuthenticationAttemptLimiter(Clock clock) {
         this.clock = clock;
     }
 
-    /** 达到失败次数上限时返回 429；窗口过期的条目会被清理。 */
-    public void checkAllowed(String key) {
+    /** 达到对应键或共享窗口的失败次数上限时返回 429。 */
+    public synchronized void checkAllowed(String key) {
         Instant now = clock.instant();
         FailureWindow window = failures.get(key);
-        if (window == null || window.startedAt().plus(WINDOW).isBefore(now)) {
-            failures.remove(key, window);
-            return;
-        }
-        if (window.failures() >= MAX_FAILURES) {
+        if (window == null || window.expired(now))
+            window = overflow;
+        if (window != null && !window.expired(now) && window.failures() >= MAX_FAILURES) {
             throw new ApiProblemException(
                     HttpStatus.TOO_MANY_REQUESTS,
                     "AUTH_RATE_LIMITED",
@@ -48,25 +49,32 @@ public class AuthenticationAttemptLimiter {
         }
     }
 
-    /** 记录一次失败；键数量到顶时先清除过期项，仍超限则不再增加状态。 */
-    public void recordFailure(String key) {
+    /** 表满时清除过期项，仍无空位则为新键启用共享窗口。 */
+    public synchronized void recordFailure(String key) {
         Instant now = clock.instant();
-        if (failures.size() >= MAX_TRACKED_KEYS && !failures.containsKey(key)) {
-            failures.entrySet().removeIf(entry -> entry.getValue().startedAt().plus(WINDOW).isBefore(now));
+        FailureWindow current = failures.get(key);
+        if (current != null && !current.expired(now)) {
+            failures.put(key, current.increment());
+            return;
+        }
+        failures.remove(key);
+        if (overflow != null && !overflow.expired(now)) {
+            overflow = overflow.increment();
+            return;
+        }
+        overflow = null;
+        if (failures.size() >= MAX_TRACKED_KEYS) {
+            failures.values().removeIf(window -> window.expired(now));
             if (failures.size() >= MAX_TRACKED_KEYS) {
+                overflow = new FailureWindow(1, now);
                 return;
             }
         }
-        failures.compute(key, (ignored, current) -> {
-            if (current == null || current.startedAt().plus(WINDOW).isBefore(now)) {
-                return new FailureWindow(1, now);
-            }
-            return new FailureWindow(current.failures() + 1, current.startedAt());
-        });
+        failures.put(key, new FailureWindow(1, now));
     }
 
     /** 成功认证或密码更新后清除该操作键的失败历史。 */
-    public void reset(String key) {
+    public synchronized void reset(String key) {
         failures.remove(key);
     }
 
@@ -75,5 +83,12 @@ public class AuthenticationAttemptLimiter {
      * @param startedAt 窗口起始时刻
      */
     private record FailureWindow(int failures, Instant startedAt) {
+        boolean expired(Instant now) {
+            return !now.isBefore(startedAt.plus(WINDOW));
+        }
+
+        FailureWindow increment() {
+            return failures >= MAX_FAILURES ? this : new FailureWindow(failures + 1, startedAt);
+        }
     }
 }

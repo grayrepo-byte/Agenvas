@@ -1,5 +1,8 @@
 package dev.agenvas.llm.application;
 
+import dev.agenvas.shared.lifecycle.BoundedWorkerExecutor;
+import dev.agenvas.shared.lifecycle.ShutdownGate;
+import jakarta.annotation.PreDestroy;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,25 +22,22 @@ public class AgentTurnScheduler {
     private final AgentTurnWorker worker;
     /** 本实例独有的租约持有者，任务接管时用于区分其他 Worker。 */
     private final String workerId = "agent-turn-" + UUID.randomUUID();
+    private final BoundedWorkerExecutor executor;
 
-    /** 注入一次处理一个持久化 Agent 回合任务的 Worker。
-     * @param worker 负责认领、调用模型并提交回合结果
-     */
-    /** 注入从数据库认领并处理单个 Agent 模型回合的 Worker。
-     * @param worker 模型回合任务处理器
-     */
-    public AgentTurnScheduler(AgentTurnWorker worker) {
+    public AgentTurnScheduler(AgentTurnWorker worker, ShutdownGate shutdown) {
         this.worker = worker;
+        this.executor = new BoundedWorkerExecutor(shutdown, "agent-turn-dispatch", LOGGER,
+                "Agent-turn scheduler pass failed: {}");
     }
 
-    /** 每次调度最多认领一个任务；重启后由任务表恢复，不依赖内存队列。 */
+    /** 每次调度最多启动一次认领，模型等待留在执行线程。 */
     @Scheduled(initialDelay = 1_000, fixedDelay = 5_000)
     public void tick() {
-        try {
-            worker.runOnce(workerId);
-        } catch (RuntimeException failure) {
-            LOGGER.error("Agent-turn scheduler pass failed: {}",
-                    failure.getClass().getSimpleName());
-        }
+        executor.execute(() -> worker.runOnce(workerId));
+    }
+
+    @PreDestroy
+    public void close() {
+        executor.close();
     }
 }

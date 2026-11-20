@@ -1,9 +1,8 @@
 import { createClientId } from "../../shared/lib/clientId";
 import { FileText, ImageSquare, Images, MusicNotes, VideoCamera } from "@/shared/ui/icons";
-import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useId, useRef, useState } from "react";
 import {
-  applyCanvasCommands,
   assetContentUrl,
   assetThumbnailUrl,
   createArtifact,
@@ -19,6 +18,7 @@ import { Field, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field"
 import { Input } from "../../shared/ui/primitives/input";
 import { KIND_LABELS, MAX_LIBRARY_NAME_LENGTH } from "../library/libraryLabels";
 import { readContentText } from "./artifactContent";
+import { saveCanvasCommands } from "./canvasAcknowledgement";
 import { MediaPreviewDialog } from "./MediaPreviewDialog";
 import {
   AUDIO_CARD_HEIGHT,
@@ -80,6 +80,7 @@ export function ProjectResourceBrowser({
   onPlaceError?: (error: Error) => void;
 }) {
   useLocale();
+  const queryClient = useQueryClient();
   const id = useId();
   const [query, setQuery] = useState("");
   const [preview, setPreview] = useState<ResourceResult | null>(null);
@@ -120,7 +121,7 @@ export function ProjectResourceBrowser({
           : resource.kind === "AUDIO"
             ? { width: AUDIO_CARD_WIDTH, height: AUDIO_CARD_HEIGHT }
             : { width: VISUAL_MEDIA_CARD_WIDTH, height: VISUAL_MEDIA_CARD_HEIGHT };
-      const canvas = await applyCanvasCommands(projectId, [
+      const canvas = await saveCanvasCommands(queryClient, projectId, [
         {
           type: "PLACE_ARTIFACT",
           itemId: plan.itemId,
