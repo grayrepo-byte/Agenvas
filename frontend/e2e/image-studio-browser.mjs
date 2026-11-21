@@ -1,13 +1,42 @@
 import assert from "node:assert/strict";
+import { mkdir, writeFile } from "node:fs/promises";
 import { createServer } from "vite";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { createBrowserSession } from "./browser-session.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+const syntheticMedia = "/api/v1/projects/synthetic-image-studio/assets/synthetic-studio-";
+const mediaGates = new Map();
+const mediaReads = new Map();
+const screenshots = process.env.AGENVAS_E2E_SCREENSHOT_DIR;
+function holdMedia(path) {
+  const gate = Promise.withResolvers();
+  mediaGates.set(path, gate);
+  return () => {
+    mediaGates.delete(path);
+    gate.resolve();
+  };
+}
 const server = await createServer({
   root,
   configFile: join(root, "vite.config.ts"),
+  plugins: [
+    {
+      name: "studio-reveal-media-gates",
+      enforce: "pre",
+      configureServer({ middlewares }) {
+        middlewares.use((request, _response, next) => {
+          const path = request.url;
+          if (!path?.startsWith(syntheticMedia)) return next();
+          mediaReads.set(path, (mediaReads.get(path) ?? 0) + 1);
+          const gate = mediaGates.get(path);
+          if (gate) void gate.promise.then(() => next());
+          else next();
+        });
+      },
+    },
+  ],
   server: { host: "127.0.0.1", port: 0, open: false },
 });
 const viewports = [
@@ -101,6 +130,47 @@ try {
       id,
     );
   }
+  async function observeReveal() {
+    await page(() => {
+      window.__studioReveal = { animations: [] };
+      document.addEventListener("animationstart", event => {
+        if (event.animationName === "image-studio-number-reveal") {
+          window.__studioReveal.animations.push(`${event.animationName}:${event.target.textContent.trim()}`);
+          return;
+        }
+        if (event.animationName !== "image-studio-frame-exit") return;
+        window.__studioReveal.animations.push(event.animationName);
+        const frame = event.target;
+        const button = document.querySelector(".image-studio-image-button");
+        const photo = button.querySelector(".image-studio-photo");
+        const original = photo.querySelector("img");
+        const a = frame.getBoundingClientRect();
+        const b = button.getBoundingClientRect();
+        window.__studioReveal.frame = {
+          originalLoaded: original.naturalWidth > 0,
+          thumbnailShown: getComputedStyle(photo).backgroundImage.includes("/thumbnail"),
+          sameCenter:
+            Math.abs(a.x + a.width / 2 - b.x - b.width / 2) < 1 &&
+            Math.abs(a.y + a.height / 2 - b.y - b.height / 2) < 1,
+          fit: getComputedStyle(original).objectFit,
+          uncovered: document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2)?.closest("button") === button,
+        };
+        function sample() {
+          if (!frame.isConnected) return;
+          const alpha = Number(getComputedStyle(frame).opacity);
+          if (alpha > 0 && alpha < 1) window.__studioReveal.blended = true;
+          else requestAnimationFrame(sample);
+        }
+        requestAnimationFrame(sample);
+      });
+    });
+  }
+  async function capture(name) {
+    if (!screenshots) return;
+    const { data } = await cdp("Page.captureScreenshot", { format: "png" });
+    await writeFile(join(screenshots, name), Buffer.from(data, "base64"));
+  }
+  if (screenshots) await mkdir(screenshots, { recursive: true });
   for (const viewport of viewports) {
     await cdp("Emulation.setDeviceMetricsOverride", { ...viewport, deviceScaleFactor: 1, mobile: false });
     for (const locale of ["zh", "en", "ru", "ja"]) {
@@ -278,6 +348,7 @@ try {
     await waitFor(() => document.querySelector(".image-studio-generation-frame h2")?.textContent === "排队中");
     await page(() => window.__imageStudio.startGeneration());
     await waitFor(() => document.querySelector(".image-studio-generation-frame h2")?.textContent === "生成中");
+    await observeReveal();
     await page(() => window.__imageStudio.finishNextOutput());
     await imageReady(1);
     await waitFor(() => document.querySelector(".image-studio-photo img")?.dataset.loaded === "true");
@@ -289,10 +360,83 @@ try {
     assert.equal(await page(() => document.querySelectorAll(".image-studio-slot").length), 3);
     assert.equal((await page(() => window.__imageStudio.evidence())).writes.length, 1);
     await cdp("Emulation.setEmulatedMedia", { features: [] });
+    assert.deepEqual(await page(() => window.__studioReveal.animations), []);
     console.log(
       `Dark Studio viewport passed: ${viewport.width}×${viewport.height} × four languages, aspect ratios, submission motion and reduced motion`,
     );
   }
+  for (const [viewport, shape] of [
+    [viewports[0], "landscape"],
+    [viewports[1], "portrait"],
+  ]) {
+    await cdp("Emulation.setDeviceMetricsOverride", { ...viewport, deviceScaleFactor: 1, mobile: false });
+    await navigate("feedback", "zh", `ok=1&revealShape=${shape}`);
+    await imageReady(4);
+    await observeReveal();
+    await click(".image-studio-restore");
+    await click(".image-studio-generate");
+    await waitFor(
+      () => document.querySelector(".image-studio-generation-frame h2")?.textContent === "正在提交生图请求",
+    );
+    await page(() => window.__imageStudio.acknowledge());
+    await waitFor(() => document.querySelector(".image-studio-generation-frame h2")?.textContent === "排队中");
+    const showThumbnail = holdMedia(`${syntheticMedia}${shape}-103/thumbnail`);
+    const showOriginal = holdMedia(`${syntheticMedia}${shape}-103/content`);
+    await page(() => window.__imageStudio.finishNextOutput());
+    await waitFor(() => document.querySelector(".image-studio-generation-frame h2")?.textContent === "正在加载预览");
+    assert.match(
+      await page(() => document.querySelector(".image-studio-gallery-summary").textContent),
+      /已出图 1 \/ 4/,
+    );
+    assert.equal(
+      await page(
+        () => getComputedStyle(document.querySelector(".image-studio-generation-frame"), "::before").animationName,
+      ),
+      "none",
+    );
+    assert.equal(await page(() => document.querySelector(".image-studio-image-button").matches("[inert]")), true);
+    await capture(`studio-${shape}-waiting.png`);
+    showThumbnail();
+    await waitFor(() => window.__studioReveal.blended && !document.querySelector(".image-studio-generation-frame"));
+    const preview = await page(() => window.__studioReveal);
+    assert.deepEqual(preview.frame, {
+      originalLoaded: false,
+      thumbnailShown: true,
+      sameCenter: true,
+      fit: "contain",
+      uncovered: true,
+    });
+    assert.deepEqual(preview.animations.sort(), ["image-studio-frame-exit", "image-studio-number-reveal:04"]);
+    await capture(`studio-${shape}-thumbnail.png`);
+    showOriginal();
+    await imageReady(1);
+    await page(() => window.__imageStudio.finishNextOutput());
+    await imageReady(2);
+    await chooseBatch("synthetic-previous-batch");
+    await imageReady(1);
+    await chooseBatch("5ba708e3-0000-4000-8000-000000000001");
+    await imageReady(2);
+    assert.equal(await page(() => document.querySelector(".image-studio-photo-index").innerText), "04 / 04");
+    assert.equal(await page(() => window.__studioReveal.animations.length), 2);
+    assert.equal((await page(() => window.__imageStudio.evidence())).writes.length, 1);
+    console.log(`Studio ${shape}: delayed media, layered reveal, original upgrade and history without replay passed`);
+  }
+  await cdp("Emulation.setDeviceMetricsOverride", { width: 1487, height: 1058, deviceScaleFactor: 1, mobile: false });
+  await navigate("portrait", "zh", "ok=1");
+  await imageReady(1);
+  await observeReveal();
+  const warm = ["content", "thumbnail"].map(kind => `${syntheticMedia}portrait-0/${kind}`);
+  const readsBefore = warm.map(path => mediaReads.get(path));
+  await click(".image-studio-restore");
+  await click(".image-studio-generate");
+  await waitFor(() => window.__studioReveal.animations.length === 2);
+  await imageReady(1);
+  assert.deepEqual(
+    warm.map(path => mediaReads.get(path)),
+    readsBefore,
+  );
+  assert.equal((await page(() => window.__imageStudio.evidence())).writes.length, 1);
+  console.log("Studio cached media: receipt with result reveals once without another media request");
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1487, height: 1058, deviceScaleFactor: 1, mobile: false });
   await navigate("polling");
   await imageReady(3);
@@ -364,6 +508,7 @@ try {
     "Dark Studio browser passed: 12 locale/viewport cases, 6 single-image aspect cases, timed polling retention, and simulated Chinese composition/Enter + long prompt + reduced VisualViewport + explicit single submit. Keyboard/composition are simulated, not a real phone IME.",
   );
 } finally {
+  for (const gate of mediaGates.values()) gate.resolve();
   await browser?.close();
   await server.close();
 }

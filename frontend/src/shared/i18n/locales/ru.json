@@ -4147,6 +4147,8 @@
   "imageStudio.variants": "Варианты текущей серии",
   "imageStudio.sendingRequest": "Отправляем запрос",
   "imageStudio.readyCount": "Готово {0} из {1}",
+  "imageStudio.loadingPreview": "Загружаем предпросмотр",
+  "imageStudio.originalUnavailable": "Исходное изображение недоступно",
   "imageStudio.slotStatus": "Изображение {0} · {1}",
   "imageStudio.batchReference": "Серия {0}",
   "imageStudio.chooseVariant": "Выбрать вариант {0}",

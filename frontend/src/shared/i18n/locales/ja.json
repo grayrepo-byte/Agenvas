@@ -4147,6 +4147,8 @@
   "imageStudio.variants": "同じバッチのバリエーション",
   "imageStudio.sendingRequest": "生成リクエストを送信中",
   "imageStudio.readyCount": "{1} 枚中 {0} 枚が完成",
+  "imageStudio.loadingPreview": "プレビューを読み込み中",
+  "imageStudio.originalUnavailable": "元画像を表示できません",
   "imageStudio.slotStatus": "画像 {0} · {1}",
   "imageStudio.batchReference": "バッチ {0}",
   "imageStudio.chooseVariant": "バリエーション {0} を選択",

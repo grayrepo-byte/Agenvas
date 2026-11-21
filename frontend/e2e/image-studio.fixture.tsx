@@ -8,7 +8,13 @@ const parameters = new URL(location.href).searchParams;
 setLocale(resolveLocale(parameters.get("locale")) ?? "zh");
 const projectId = "synthetic-image-studio";
 const scenario = parameters.get("scenario") ?? "grid";
-const shape = scenario === "portrait" ? "portrait" : scenario === "landscape" ? "landscape" : "square";
+const revealShape = parameters.get("revealShape");
+const shape =
+  scenario === "portrait" || revealShape === "portrait"
+    ? "portrait"
+    : scenario === "landscape" || revealShape === "landscape"
+      ? "landscape"
+      : "square";
 const [width, height] = shape === "portrait" ? [900, 1600] : shape === "landscape" ? [1600, 900] : [1024, 1024];
 const initialCount = scenario === "portrait" || scenario === "landscape" ? 1 : 4;
 const photoMode = parameters.has("photos");
@@ -241,7 +247,7 @@ Object.assign(window, {
           ...task,
           status: "SUCCEEDED",
           version: task.version + 1,
-          results: [{ ...fixtureResult(index), artifactVersionId: `synthetic-new-version-${index}` }],
+          results: [{ ...fixtureResult(100 + index), artifactVersionId: `synthetic-new-version-${index}` }],
         };
       });
     },

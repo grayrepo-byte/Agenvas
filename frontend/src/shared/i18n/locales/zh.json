@@ -4147,6 +4147,8 @@
   "imageStudio.variants": "同批变体",
   "imageStudio.sendingRequest": "正在提交生图请求",
   "imageStudio.readyCount": "已出图 {0} / {1}",
+  "imageStudio.loadingPreview": "正在加载预览",
+  "imageStudio.originalUnavailable": "原图暂不可用",
   "imageStudio.slotStatus": "图片 {0} · {1}",
   "imageStudio.batchReference": "批次 {0}",
   "imageStudio.chooseVariant": "选择变体 {0}",

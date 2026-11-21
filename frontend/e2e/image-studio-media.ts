@@ -67,7 +67,7 @@ export function imageStudioMediaPreview(): Plugin {
 <text x="${width * 0.07}" y="${height * 0.92}" fill="white" font-family="sans-serif" font-size="${width * 0.025}">NOT AI GENERATED</text>
 </svg>`,
         );
-        response.setHeader("Cache-Control", "no-store");
+        response.setHeader("Cache-Control", "private, max-age=300");
         response.setHeader("X-Agenvas-Synthetic-Preview", "true");
         response.setHeader("X-Content-Type-Options", "nosniff");
         response.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");

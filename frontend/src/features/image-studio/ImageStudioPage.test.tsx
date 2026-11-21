@@ -148,14 +148,98 @@ it("replaces the previous photo on submit and fills numbered slots as individual
   expect(variant).toHaveTextContent("02");
   expect(stage.getByRole("img", { name: "图片 1 · 生成中" })).toBeVisible();
   expect(stage.getByRole("status")).toHaveTextContent("已出图 1 / 2");
+  expect(stage.getByRole("heading", { name: "正在加载预览" })).toBeVisible();
+  expect(stage.queryByRole("img", { name: "生成图片 2" })).not.toBeInTheDocument();
+  detail = { ...queued, tasks: [task("first", "SUCCEEDED", [result]), detail.tasks[1]!] };
+  await user.click(screen.getByRole("button", { name: "刷新工作台" }));
+  await stage.findByRole("button", { name: "选择变体 1" });
+  expect(stage.getByRole("status")).toHaveTextContent("已出图 2 / 2");
+  expect(stage.getByRole("heading", { name: "正在加载预览" })).toBeVisible();
+  fireEvent.load(variant.querySelector("img")!);
+  const firstPhoto = await stage.findByRole("img", { name: "生成图片 2" });
   expect(stage.getByRole("link", { name: "下载图片 2" })).toHaveAttribute("download", "image-2.png");
+  fireEvent.load(stage.getByRole("button", { name: "选择变体 1" }).querySelector("img")!);
+  fireEvent.load(firstPhoto);
   const extra = { ...result, artifactVersionId: "native-extra", assetId: "extra-asset" };
   detail = { ...queued, tasks: [task("first", "SUCCEEDED", [result, extra]), detail.tasks[1]!] };
   await user.click(screen.getByRole("button", { name: "刷新工作台" }));
   expect(await stage.findByRole("button", { name: "选择变体 3" })).toHaveTextContent("03");
-  expect(variant).toHaveAttribute("aria-pressed", "true");
   expect(stage.getByRole("status")).toHaveTextContent("已出图 3 / 3");
+  expect(firstPhoto).toBeVisible();
+  expect(variant).toHaveAttribute("aria-pressed", "true");
+  expect(stage.queryByRole("heading", { name: "正在加载预览" })).not.toBeInTheDocument();
   expect(writes).toBe(1);
+});
+
+it.each(["original", "thumbnail", "neither"] as const)(
+  "keeps archived results when only the %s image source is usable",
+  async usableSource => {
+    const accepted = { ...history, id: "preview-batch", prompt: "归档正常，图片资源可能失败" };
+    const writes = vi.fn();
+    server.use(
+      http.post("/api/v1/image-studio/batches", () => {
+        writes();
+        return HttpResponse.json(accepted);
+      }),
+    );
+    show();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "提示词" }), accepted.prompt);
+    await user.click(screen.getByRole("button", { name: "生成图片" }));
+    const region = screen.getByRole("region", { name: "生成结果" });
+    const stage = within(region);
+    const thumb = (await stage.findByRole("button", { name: "选择变体 1" })).querySelector("img")!;
+    const original = region.querySelector<HTMLImageElement>('img[src$="/result-asset/content"]')!;
+    expect(stage.getByRole("heading", { name: "正在加载预览" })).toBeVisible();
+
+    if (usableSource === "original") {
+      fireEvent.error(thumb);
+      expect(stage.getByRole("heading", { name: "正在加载预览" })).toBeVisible();
+      fireEvent.load(original);
+      expect(stage.getByRole("img", { name: "生成图片 1" })).toBeVisible();
+      expect(stage.queryByText("原图暂不可用")).not.toBeInTheDocument();
+    } else {
+      fireEvent.error(original);
+      expect(stage.getByRole("heading", { name: "正在加载预览" })).toBeVisible();
+      if (usableSource === "thumbnail") {
+        fireEvent.load(thumb);
+        expect(stage.getByRole("button", { name: "选择变体 1" })).toHaveAttribute("aria-pressed", "true");
+        expect(stage.getByText("原图暂不可用")).toBeVisible();
+      } else {
+        fireEvent.error(thumb);
+        expect(stage.getByRole("heading", { name: "预览暂不可用" })).toBeVisible();
+        expect(stage.queryByRole("img", { name: "生成图片 1" })).not.toBeInTheDocument();
+      }
+    }
+    expect(stage.getByRole("status", { name: "" })).toHaveTextContent("已出图 1 / 2");
+    expect(writes).toHaveBeenCalledTimes(1);
+  },
+);
+
+it("waits for a displayable photo when the receipt already contains an archived result", async () => {
+  const accepted = { ...history, id: "instant-batch", prompt: "回执已带图" };
+  const writes = vi.fn();
+  server.use(
+    http.get("/api/v1/image-studio/batches", () => HttpResponse.json({ items: [history], nextCursor: null })),
+    http.post("/api/v1/image-studio/batches", () => {
+      writes();
+      return HttpResponse.json(accepted);
+    }),
+  );
+  show();
+  const user = userEvent.setup();
+  const prompt = await screen.findByRole("textbox", { name: "提示词" });
+  await user.type(prompt, accepted.prompt);
+  await user.click(screen.getByRole("button", { name: "生成图片" }));
+  const stage = within(screen.getByRole("region", { name: "生成结果" }));
+  await stage.findByText("批次 #INSTANT-");
+  expect(stage.queryByRole("img", { name: "生成图片 1" })).not.toBeInTheDocument();
+  const variant = stage.getByRole("button", { name: "选择变体 1" });
+  fireEvent.load(variant.querySelector("img")!);
+  expect(await stage.findByRole("img", { name: "生成图片 1" })).toBeVisible();
+  expect(variant).toHaveAttribute("aria-pressed", "true");
+  expect(prompt).toHaveValue(accepted.prompt);
+  expect(writes).toHaveBeenCalledTimes(1);
 });
 
 it("respects a history choice made while the new request is awaiting its receipt", async () => {
@@ -361,13 +445,14 @@ it("shows UNKNOWN without automatically creating another attempt", async () => {
 });
 
 it.each([
-  ["FAILED", "生成失败", "danger"],
-  ["CANCELED", "已取消", "idle"],
-])("stops the waiting frame for a %s batch with no image", async (status, label, tone) => {
+  ["FAILED", "生成失败", "danger", null],
+  ["CANCELED", "已取消", "idle", null],
+  ["BLOCKED", "归档不完整", "warning", "STUDIO_IMAGE_ARCHIVE_MISSING"],
+])("stops the waiting frame for a %s batch with no image", async (status, label, tone, errorCode) => {
   server.use(
     http.get("/api/v1/image-studio/batches", () =>
       HttpResponse.json({
-        items: [{ ...history, tasks: [{ id: "stopped", status, version: 2, errorCode: null, results: [] }] }],
+        items: [{ ...history, tasks: [{ id: "stopped", status, version: 2, errorCode, results: [] }] }],
         nextCursor: null,
       }),
     ),

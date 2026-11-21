@@ -128,6 +128,9 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
   const draft = useImageStudioDraft(ownerId);
   const update = (patch: Partial<StudioDraft>) => useImageStudioDraftStore.getState().update(ownerId, patch);
   const [preview, setPreview] = useState<StudioPreview | null>(null);
+  // Unlike the accepted command, reveal eligibility belongs to this mounted workspace.
+  const revealCommand = useRef<string | null>(null);
+  const [revealBatchId, setRevealBatchId] = useState<string>();
   const inputRef = useRef<HTMLInputElement>(null);
   const promptId = useId();
   const historyId = useId();
@@ -186,9 +189,13 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
   const accept = useMutation({
     mutationKey: acceptanceKey,
     mutationFn: createImageStudioBatch,
-    onSuccess: batch => {
-      queryClient.setQueryData(batchKey(ownerId, batch.id), batch);
+    onSuccess: (batch, command) => {
       const current = useImageStudioDraftStore.getState().owners[ownerId];
+      if (revealCommand.current === command.key) {
+        revealCommand.current = null;
+        if (current?.viewingSubmission) setRevealBatchId(batch.id);
+      }
+      queryClient.setQueryData(batchKey(ownerId, batch.id), batch);
       const awaitingHistory = current?.awaitingHistory ?? [];
       update({
         command: null,
@@ -199,7 +206,7 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
       });
       void queryClient.invalidateQueries({ queryKey: historyKey(ownerId) });
     },
-    onError: error => {
+    onError: (error, command) => {
       // A definitive client rejection did not accept a batch. Network uncertainty retains the command.
       if (
         error instanceof ApiError &&
@@ -207,8 +214,10 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
         error.status < 500 &&
         error.status !== 408 &&
         error.status !== 429
-      )
+      ) {
+        if (revealCommand.current === command.key) revealCommand.current = null;
         update({ command: null, viewingSubmission: false });
+      }
     },
     retry: false,
   });
@@ -255,11 +264,24 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
         referenceVersionIds: draft.references.map(reference => reference.versionId),
       },
     };
+    revealCommand.current = command.key;
+    setRevealBatchId(undefined);
     update({ command, viewingSubmission: true });
     accept.mutate(command);
   }
   function chooseBatch(batch: ImageStudioBatch) {
+    revealCommand.current = null;
+    setRevealBatchId(undefined);
     update({ selectedBatchId: batch.id, viewingSubmission: false });
+  }
+  function chooseVersion(batchId: string, version: string) {
+    revealCommand.current = null;
+    setRevealBatchId(undefined);
+    const current = useImageStudioDraftStore.getState().owners[ownerId];
+    update({ selectedBatchId: batchId, selectedVersions: { ...current?.selectedVersions, [batchId]: version } });
+  }
+  function confirmFirstPreview(batchId: string, version: string) {
+    if (revealBatchId === batchId) chooseVersion(batchId, version);
   }
   function restoreBatch(batch: ImageStudioBatch) {
     update({
@@ -281,15 +303,16 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
   const gallery = batch && studioGallery(batch, draft.selectedVersions[batch.id]);
   const viewingSubmission = draft.viewingSubmission && !!draft.command;
   const visibleBatchId = viewingSubmission ? undefined : batch?.id;
+  const awaitingFirstPreview = visibleBatchId !== undefined && visibleBatchId === revealBatchId;
   const visibleVersion = gallery?.active?.result.artifactVersionId;
   useEffect(() => {
-    if (!visibleBatchId || !visibleVersion) return;
+    if (!visibleBatchId || !visibleVersion || awaitingFirstPreview) return;
     // Keep the first displayed photo in view when an earlier numbered output arrives later.
     const store = useImageStudioDraftStore.getState();
     const versions = store.owners[ownerId]?.selectedVersions;
     if (!versions?.[visibleBatchId])
       store.update(ownerId, { selectedVersions: { ...versions, [visibleBatchId]: visibleVersion } });
-  }, [ownerId, visibleBatchId, visibleVersion]);
+  }, [ownerId, visibleBatchId, visibleVersion, awaitingFirstPreview]);
   const resultsView: StudioResultsView | undefined =
     draft.command && viewingSubmission
       ? { request: draft.command.request, pending: accepting }
@@ -442,13 +465,11 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
           ) : null}
           {resultsView ? (
             <StudioBatchResults
+              key={viewingSubmission ? draft.command?.key : batch?.id}
               view={resultsView}
-              onChoose={(batchId, version) =>
-                update({
-                  selectedBatchId: batchId,
-                  selectedVersions: { ...draft.selectedVersions, [batchId]: version },
-                })
-              }
+              awaitingFirstPreview={awaitingFirstPreview}
+              onFirstPreview={confirmFirstPreview}
+              onChoose={chooseVersion}
               onPreview={setPreview}
               onRestore={restoreBatch}
               locked={locked || upload.isPending}

@@ -4147,6 +4147,8 @@
   "imageStudio.variants": "Batch variations",
   "imageStudio.sendingRequest": "Submitting your request",
   "imageStudio.readyCount": "{0} of {1} ready",
+  "imageStudio.loadingPreview": "Loading preview",
+  "imageStudio.originalUnavailable": "Original image unavailable",
   "imageStudio.slotStatus": "Image {0} · {1}",
   "imageStudio.batchReference": "Batch {0}",
   "imageStudio.chooseVariant": "Select variation {0}",

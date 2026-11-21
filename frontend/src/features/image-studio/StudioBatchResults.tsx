@@ -11,7 +11,7 @@ import {
   Question,
   WarningCircle,
 } from "@/shared/ui/icons";
-import { useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState, type CSSProperties } from "react";
 import { assetContentUrl, assetThumbnailUrl } from "../../shared/api/client";
 import type { CreateImageStudioBatch, ImageStudioBatch } from "../../shared/api/imageStudio";
 import { t } from "../../shared/i18n";
@@ -39,7 +39,9 @@ function downloadFilename(index: number, contentType: string) {
   return extension ? `image-${index}.${extension}` : `image-${index}`;
 }
 
-function statusAppearance(status: StudioStatus) {
+type FrameStatus = StudioStatus | "imageStudio.loadingPreview" | "media.card.previewUnavailable";
+
+function statusAppearance(status: FrameStatus) {
   switch (status) {
     case "imageStudio.status.ready":
       return { tone: "working", Icon: Clock };
@@ -51,9 +53,12 @@ function statusAppearance(status: StudioStatus) {
     case "imageStudio.status.blocked":
     case "imageStudio.status.archiveMissing":
     case "imageStudio.status.partial":
+    case "media.card.previewUnavailable":
       return { tone: "warning", Icon: WarningCircle };
     case "imageStudio.status.failed":
       return { tone: "danger", Icon: WarningCircle };
+    case "imageStudio.loadingPreview":
+      return { tone: "idle", Icon: Clock };
     case "imageStudio.status.canceled":
     case "imageStudio.emptyTitle":
       return { tone: "idle", Icon: MinusCircle };
@@ -104,10 +109,26 @@ function BatchNotices({ batch }: { batch: ImageStudioBatch }) {
   );
 }
 
-function GenerationFrame({ status, prompt, format }: { status: StudioStatus; prompt: string; format: string }) {
+function GenerationFrame({
+  status,
+  prompt,
+  format,
+  onExit,
+}: {
+  status: FrameStatus;
+  prompt: string;
+  format: string;
+  onExit?: () => void;
+}) {
   const { tone, Icon } = statusAppearance(status);
   return (
-    <div className="image-studio-generation-frame" data-tone={tone}>
+    <div
+      className="image-studio-generation-frame"
+      data-tone={tone}
+      data-exiting={onExit ? "" : undefined}
+      aria-hidden={onExit ? true : undefined}
+      onAnimationEnd={onExit}
+    >
       <span className="image-studio-frame-corners" aria-hidden="true" />
       <span className="image-studio-frame-format">{format}</span>
       <div className="image-studio-frame-content">
@@ -121,25 +142,44 @@ function GenerationFrame({ status, prompt, format }: { status: StudioStatus; pro
   );
 }
 
-function ResultPhoto({ preview }: { preview: StudioPreview }) {
+type ImageOutcome = "ready" | "failed";
+
+function ResultPhoto({
+  preview,
+  original,
+  thumbnail,
+  firstPhoto,
+  onOriginal,
+}: {
+  preview: StudioPreview;
+  original?: ImageOutcome;
+  thumbnail?: ImageOutcome;
+  firstPhoto: boolean;
+  onOriginal: (outcome: ImageOutcome) => void;
+}) {
   const { result, projectId, index } = preview;
-  const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
   return (
     <span
       className="image-studio-photo"
-      style={{ backgroundImage: `url("${assetThumbnailUrl(projectId, result.assetId)}")` }}
+      style={
+        thumbnail === "ready" && (!firstPhoto || original !== "ready")
+          ? { backgroundImage: `url("${assetThumbnailUrl(projectId, result.assetId)}")` }
+          : undefined
+      }
     >
       <img
         src={assetContentUrl(projectId, result.assetId)}
         width={result.width}
         height={result.height}
         alt={t("imageStudio.resultImage", { "0": index })}
-        data-loaded={state === "ready"}
-        onLoad={() => setState("ready")}
-        onError={() => setState("failed")}
+        data-loaded={original === "ready"}
+        onLoad={() => onOriginal("ready")}
+        onError={() => onOriginal("failed")}
       />
-      {state === "failed" ? (
-        <span className="image-studio-photo-error">{t("media.card.previewUnavailable")}</span>
+      {original === "failed" && thumbnail ? (
+        <span className="image-studio-photo-error">
+          {t(thumbnail === "ready" ? "imageStudio.originalUnavailable" : "media.card.previewUnavailable")}
+        </span>
       ) : null}
     </span>
   );
@@ -151,12 +191,16 @@ export type StudioResultsView =
 
 export function StudioBatchResults({
   view,
+  awaitingFirstPreview,
+  onFirstPreview,
   onChoose,
   onPreview,
   onRestore,
   locked,
 }: {
   view: StudioResultsView;
+  awaitingFirstPreview: boolean;
+  onFirstPreview: (batchId: string, version: string) => void;
   onChoose: (batchId: string, version: string) => void;
   onPreview: (preview: StudioPreview) => void;
   onRestore: (batch: ImageStudioBatch) => void;
@@ -174,31 +218,113 @@ export function StudioBatchResults({
   const active = gallery?.active;
   const slots: StudioSlot[] =
     gallery?.slots ?? Array.from({ length: parameters.generationCount ?? 1 }, (_, i) => ({ key: String(i), status }));
+  const [thumbnails, setThumbnails] = useState<Record<string, ImageOutcome>>({});
+  const [originals, setOriginals] = useState<Record<string, ImageOutcome>>({});
+  const [originalCandidate, setOriginalCandidate] = useState<string>();
+  const [reveal, setReveal] = useState<{ version: string; playing: boolean }>();
+  const finishReveal = useCallback(() => {
+    setReveal(current => (current?.playing ? { ...current, playing: false } : current));
+  }, []);
+  let firstReady: StudioPreview | undefined;
+  let thumbnailPending = false;
+  let photo = active;
+  if (awaitingFirstPreview && batch) {
+    let next: StudioPreview | undefined;
+    let current: StudioPreview | undefined;
+    for (const [index, { result }] of slots.entries()) {
+      if (!result) continue;
+      const version = result.artifactVersionId;
+      const preview = { result, projectId: batch.projectId, index: index + 1 };
+      thumbnailPending ||= thumbnails[version] === undefined;
+      if (thumbnails[version] === "ready" || originals[version] === "ready") {
+        firstReady = preview;
+        break;
+      }
+      if (originals[version] !== "failed") {
+        next ??= preview;
+        if (version === originalCandidate) current = preview;
+      }
+    }
+    // Keep one original in flight. Newly archived earlier slots can win via their thumbnails,
+    // but must not interrupt an in-flight original for a later numbered slot.
+    photo = firstReady ?? current ?? next;
+    if (!firstReady && photo?.result.artifactVersionId !== originalCandidate)
+      setOriginalCandidate(photo?.result.artifactVersionId);
+  }
+  const firstVersion = firstReady?.result.artifactVersionId;
+  const batchId = batch?.id;
+  useLayoutEffect(() => {
+    if (!batchId || !firstVersion) return;
+    setReveal({
+      version: firstVersion,
+      playing: !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches,
+    });
+    onFirstPreview(batchId, firstVersion);
+  }, [batchId, firstVersion, onFirstPreview]);
+  const playing = reveal?.playing;
+  useEffect(() => {
+    if (!playing) return;
+    const preference = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (!preference) return;
+    function stopIfReduced() {
+      if (preference?.matches) finishReveal();
+    }
+    preference.addEventListener("change", stopIfReduced);
+    stopIfReduced();
+    return () => preference.removeEventListener("change", stopIfReduced);
+  }, [playing, finishReveal]);
+  const waitingForImage = awaitingFirstPreview && !firstReady;
+  const frameStatus =
+    active && waitingForImage
+      ? photo || thumbnailPending
+        ? "imageStudio.loadingPreview"
+        : "media.card.previewUnavailable"
+      : status;
+  const photoVersion = photo?.result.artifactVersionId;
+  const firstPhoto = awaitingFirstPreview || (reveal !== undefined && reveal.version === photoVersion);
+  const revealing = playing && firstPhoto;
   const ratio = parameters.aspectRatio && parameters.aspectRatio !== "AUTO" ? parameters.aspectRatio : "1:1";
-  const aspect = active ? active.result.width / active.result.height : ratio.replace(":", " / ");
+  const aspect = photo ? photo.result.width / photo.result.height : ratio.replace(":", " / ");
   const format = [ratio, parameters.resolution].filter(Boolean).join(" · ");
   const { tone } = statusAppearance(status);
   return (
     <>
       {batch ? <BatchNotices batch={batch} /> : null}
       <div className="image-studio-hero" style={{ "--studio-result-ratio": aspect } as CSSProperties}>
-        {active ? (
+        {photo && photoVersion ? (
           <Button
             className="image-studio-image-button"
             variant="ghost"
             type="button"
-            data-version-id={active.result.artifactVersionId}
-            aria-label={t("imageStudio.previewImage", { "0": active.index })}
-            onClick={() => onPreview(active)}
+            data-version-id={photoVersion}
+            data-first-photo={firstPhoto ? "" : undefined}
+            aria-label={t("imageStudio.previewImage", { "0": photo.index })}
+            aria-hidden={waitingForImage || undefined}
+            inert={waitingForImage || undefined}
+            style={waitingForImage ? { visibility: "hidden" } : undefined}
+            onClick={() => onPreview(photo)}
           >
-            <ResultPhoto key={active.result.artifactVersionId} preview={active} />
+            <ResultPhoto
+              key={photoVersion}
+              preview={photo}
+              original={originals[photoVersion]}
+              thumbnail={thumbnails[photoVersion]}
+              firstPhoto={firstPhoto}
+              onOriginal={outcome => setOriginals(previous => ({ ...previous, [photoVersion]: outcome }))}
+            />
             <span className="image-studio-photo-index" aria-hidden="true">
-              {String(active.index).padStart(2, "0")} / {String(slots.length).padStart(2, "0")}
+              {String(photo.index).padStart(2, "0")} / {String(slots.length).padStart(2, "0")}
             </span>
           </Button>
-        ) : (
-          <GenerationFrame status={status} prompt={prompt} format={format} />
-        )}
+        ) : null}
+        {!photo || waitingForImage || revealing ? (
+          <GenerationFrame
+            status={revealing ? "imageStudio.loadingPreview" : frameStatus}
+            prompt={prompt}
+            format={format}
+            onExit={revealing ? finishReveal : undefined}
+          />
+        ) : null}
       </div>
       <div className="image-studio-gallery">
         <div className="image-studio-gallery-caption">
@@ -233,13 +359,25 @@ export function StudioBatchResults({
                     variant="ghost"
                     className="image-studio-variant"
                     data-version-id={item.artifactVersionId}
-                    aria-pressed={item.artifactVersionId === active?.result.artifactVersionId}
+                    aria-pressed={!waitingForImage && item.artifactVersionId === photoVersion}
                     aria-label={label}
                     title={label}
-                    onClick={() => onChoose(batch.id, item.artifactVersionId)}
+                    onClick={() => {
+                      finishReveal();
+                      onChoose(batch.id, item.artifactVersionId);
+                    }}
                   >
-                    <img src={assetThumbnailUrl(batch.projectId, item.assetId)} alt="" />
-                    <span className="image-studio-slot-number" aria-hidden="true">
+                    <img
+                      src={assetThumbnailUrl(batch.projectId, item.assetId)}
+                      alt=""
+                      onLoad={() => setThumbnails(previous => ({ ...previous, [item.artifactVersionId]: "ready" }))}
+                      onError={() => setThumbnails(previous => ({ ...previous, [item.artifactVersionId]: "failed" }))}
+                    />
+                    <span
+                      className="image-studio-slot-number"
+                      data-first-reveal={revealing && item.artifactVersionId === photoVersion ? "" : undefined}
+                      aria-hidden="true"
+                    >
                       {number}
                     </span>
                   </Button>
