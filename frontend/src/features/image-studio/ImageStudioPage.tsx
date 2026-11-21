@@ -126,6 +126,7 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
   const locale = useLocale();
   const queryClient = useQueryClient();
   const draft = useImageStudioDraft(ownerId);
+  const { promptBeforeHistory } = draft;
   const update = (patch: Partial<StudioDraft>) => useImageStudioDraftStore.getState().update(ownerId, patch);
   const [preview, setPreview] = useState<StudioPreview | null>(null);
   // Unlike the accepted command, reveal eligibility belongs to this mounted workspace.
@@ -266,13 +267,19 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
     };
     revealCommand.current = command.key;
     setRevealBatchId(undefined);
-    update({ command, viewingSubmission: true });
+    update({ command, viewingSubmission: true, promptBeforeHistory: null });
     accept.mutate(command);
   }
-  function chooseBatch(batch: ImageStudioBatch) {
+  function chooseBatch(batch: ImageStudioBatch, hasImage: boolean) {
     revealCommand.current = null;
     setRevealBatchId(undefined);
-    update({ selectedBatchId: batch.id, viewingSubmission: false });
+    update({
+      selectedBatchId: batch.id,
+      viewingSubmission: false,
+      ...(!locked && hasImage && batch.prompt !== draft.prompt
+        ? { prompt: batch.prompt, promptBeforeHistory: draft.prompt }
+        : {}),
+    });
   }
   function chooseVersion(batchId: string, version: string) {
     revealCommand.current = null;
@@ -286,6 +293,7 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
   function restoreBatch(batch: ImageStudioBatch) {
     update({
       prompt: batch.prompt,
+      promptBeforeHistory: null,
       capabilityId: batch.capabilityId,
       capabilityVersion: batch.capabilityVersion,
       parameters: { ...batch.parameters },
@@ -360,7 +368,7 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
             data-complete={status === "imageStudio.status.succeeded"}
             aria-pressed={!viewingSubmission && selectedId === row.id}
             onClick={() => {
-              chooseBatch(row);
+              chooseBatch(row, !!result);
               onChoose?.();
             }}
             title={[batchReference(row.id), row.prompt, date, t(status)].join(" · ")}
@@ -629,12 +637,23 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
               <Textarea
                 id={promptId}
                 value={draft.prompt}
-                onChange={event => update({ prompt: event.target.value })}
+                onChange={event => update({ prompt: event.target.value, promptBeforeHistory: null })}
                 placeholder={t("imageStudio.promptPlaceholder")}
                 maxLength={8000}
                 rows={3}
                 variant="ghost"
               />
+              {promptBeforeHistory !== null ? (
+                <Button
+                  className="image-studio-undo-history-prompt self-start"
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => update({ prompt: promptBeforeHistory, promptBeforeHistory: null })}
+                >
+                  {t("imageStudio.undoHistoryPrompt")}
+                </Button>
+              ) : null}
             </Field>
           </div>
           <div className="image-studio-composer-toolbar">

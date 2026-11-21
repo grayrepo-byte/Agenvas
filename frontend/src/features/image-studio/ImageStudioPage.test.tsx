@@ -258,18 +258,21 @@ it("respects a history choice made while the new request is awaiting its receipt
   show();
   const user = userEvent.setup();
   const previous = await screen.findByRole("button", { name: /清晨的海边小屋/ });
-  await user.type(screen.getByRole("textbox", { name: "提示词" }), accepted.prompt);
+  const prompt = screen.getByRole("textbox", { name: "提示词" });
+  await user.type(prompt, accepted.prompt);
   try {
     await user.click(screen.getByRole("button", { name: "生成图片" }));
     await screen.findByRole("heading", { name: "正在提交生图请求" });
     expect(previous).toHaveAttribute("aria-pressed", "false");
     await user.click(previous);
     expect(await screen.findByRole("link", { name: "下载图片 1" })).toBeVisible();
+    expect(prompt).toHaveValue(accepted.prompt);
   } finally {
     release();
   }
   expect(await screen.findByRole("button", { name: /新批次/ })).toHaveAttribute("aria-pressed", "false");
   expect(previous).toHaveAttribute("aria-pressed", "true");
+  expect(prompt).toHaveValue(accepted.prompt);
 });
 
 it("keeps a pending submission visible after leaving the route and coming back", async () => {
@@ -622,7 +625,7 @@ it.each([
   expect(screen.getByText(errorCode)).toBeInTheDocument();
 });
 
-it("browses thumbnail history independently of the prompt draft and restores only on request", async () => {
+it("restores only the prompt on an explicit history image selection and still browses imageless batches", async () => {
   const unknown = {
     ...history,
     id: "other",
@@ -643,6 +646,15 @@ it("browses thumbnail history independently of the prompt draft and restores onl
     "/api/v1/projects/studio-scope/assets/result-asset/thumbnail",
   );
   expect(first).toHaveTextContent("部分完成");
+  expect(first).toHaveAttribute("aria-pressed", "true");
+  expect(prompt).toHaveValue("尚未提交的草稿");
+  await user.click(first);
+  expect(prompt).toHaveValue(history.prompt);
+  expect(screen.getByRole("combobox", { name: "分辨率" })).toHaveTextContent("1K");
+  expect(screen.getByRole("combobox", { name: "数量" })).toHaveTextContent("1 张");
+  expect(screen.queryByRole("button", { name: "移除参考图 1" })).not.toBeInTheDocument();
+  await user.clear(prompt);
+  await user.type(prompt, "继续编辑");
   const second = within(rail).getByRole("button", { name: /第二批/ });
   expect(second).toHaveTextContent("受理状态未知");
   await user.click(second);
@@ -651,9 +663,64 @@ it("browses thumbnail history independently of the prompt draft and restores onl
   expect(screen.queryByRole("complementary", { name: "历史记录" })).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "展开历史记录" }));
   expect(screen.getByRole("button", { name: /第二批/ })).toHaveAttribute("aria-pressed", "true");
-  expect(prompt).toHaveValue("尚未提交的草稿");
+  expect(prompt).toHaveValue("继续编辑");
   await user.click(screen.getByRole("button", { name: "回填参数" }));
   expect(prompt).toHaveValue("第二批");
+});
+
+it("undoes only the latest effective history prompt replacement, including an empty draft", async () => {
+  const secondBatch = { ...history, id: "second-image-batch", prompt: "山间晨雾" };
+  server.use(
+    http.get("/api/v1/image-studio/batches", () =>
+      HttpResponse.json({ items: [history, secondBatch], nextCursor: null }),
+    ),
+  );
+  show();
+  const user = userEvent.setup();
+  const prompt = await screen.findByRole("textbox", { name: "提示词" });
+  const first = await screen.findByRole("button", { name: /清晨的海边小屋/ });
+  const second = screen.getByRole("button", { name: /山间晨雾/ });
+
+  await user.click(first);
+  await user.click(screen.getByRole("button", { name: "撤销回填" }));
+  expect(prompt).toHaveValue("");
+  expect(screen.queryByRole("button", { name: "撤销回填" })).not.toBeInTheDocument();
+  await user.click(first);
+  await user.click(second);
+  await user.click(second);
+  await user.click(screen.getByRole("button", { name: "撤销回填" }));
+  expect(prompt).toHaveValue(history.prompt);
+  expect(second).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("combobox", { name: "分辨率" })).toHaveTextContent("1K");
+  expect(screen.queryByRole("button", { name: "撤销回填" })).not.toBeInTheDocument();
+});
+
+it.each(["editing", "reusing settings", "submitting"] as const)("clears the history undo after %s", async action => {
+  let submittedPrompt: unknown;
+  server.use(
+    http.get("/api/v1/image-studio/batches", () => HttpResponse.json({ items: [history], nextCursor: null })),
+    http.post("/api/v1/image-studio/batches", async ({ request: submission }) => {
+      const body = await submission.json();
+      submittedPrompt = body && typeof body === "object" && "prompt" in body ? body.prompt : undefined;
+      return HttpResponse.json(history);
+    }),
+  );
+  show();
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: /清晨的海边小屋/ }));
+  expect(screen.getByRole("button", { name: "撤销回填" })).toBeVisible();
+  if (action === "editing") {
+    const prompt = screen.getByRole("textbox", { name: "提示词" });
+    await user.type(prompt, "，柔和光线");
+    expect(prompt).toHaveValue(`${history.prompt}，柔和光线`);
+  } else if (action === "reusing settings") {
+    await user.click(screen.getByRole("button", { name: "回填参数" }));
+    expect(screen.getByRole("combobox", { name: "分辨率" })).toHaveTextContent("2K");
+  } else {
+    await user.click(screen.getByRole("button", { name: "生成图片" }));
+    await waitFor(() => expect(submittedPrompt).toBe(history.prompt));
+  }
+  expect(screen.queryByRole("button", { name: "撤销回填" })).not.toBeInTheDocument();
 });
 
 it("changes capability-specific advanced parameters on demand and retains the draft when dismissed", async () => {
@@ -669,7 +736,7 @@ it("changes capability-specific advanced parameters on demand and retains the dr
   expect(screen.getByRole("checkbox", { name: "透明背景" })).toBeChecked();
 });
 
-it("closes the narrow history drawer after selection and returns focus without replacing the draft", async () => {
+it("fills the prompt, closes the narrow history drawer and returns focus after selection", async () => {
   vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {} }));
   try {
     server.use(
@@ -684,7 +751,7 @@ it("closes the narrow history drawer after selection and returns focus without r
     const drawer = screen.getByRole("dialog", { name: "历史记录" });
     await user.click(within(drawer).getByRole("button", { name: /清晨的海边小屋/ }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "历史记录" })).not.toBeInTheDocument());
-    expect(prompt).toHaveValue("手机草稿");
+    expect(prompt).toHaveValue(history.prompt);
     expect(toggle).toHaveFocus();
   } finally {
     vi.unstubAllGlobals();
@@ -783,6 +850,7 @@ it("keeps the active version after a reordered detail read and across history br
   const prompt = await screen.findByRole("textbox", { name: "提示词" });
   await user.type(prompt, "未提交的新描述");
   await user.click(select());
+  expect(prompt).toHaveValue("未提交的新描述");
   expect(select()).toHaveAttribute("aria-pressed", "true");
   expect(hero()).toHaveAttribute("src", expect.stringContaining("/second/content"));
   expect(historyItem().querySelector("img")).toHaveAttribute("src", expect.stringContaining("/second/thumbnail"));
@@ -792,10 +860,11 @@ it("keeps the active version after a reordered detail read and across history br
   expect(await screen.findByRole("button", { name: "选择变体 4" })).toHaveAttribute("aria-pressed", "true");
   expect(hero()).toHaveAttribute("src", expect.stringContaining("/second/content"));
   expect(historyItem().querySelector("img")).toHaveAttribute("src", expect.stringContaining("/second/thumbnail"));
+  expect(prompt).toHaveValue("未提交的新描述");
   await user.click(screen.getByRole("button", { name: /另一批/ }));
   await user.click(historyItem());
   expect(screen.getByRole("button", { name: "选择变体 4" })).toHaveAttribute("aria-pressed", "true");
-  expect(prompt).toHaveValue("未提交的新描述");
+  expect(prompt).toHaveValue(history.prompt);
   expect(screen.getByText("PROVIDER_REJECTED")).toBeVisible();
   await user.click(screen.getByRole("button", { name: "回填参数" }));
   expect(prompt).toHaveValue(history.prompt);

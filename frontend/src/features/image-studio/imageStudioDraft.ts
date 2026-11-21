@@ -6,6 +6,7 @@ export type StudioReference = Pick<ImageStudioReference, "versionId"> &
 export type StudioCommand = { key: string; request: CreateImageStudioBatch };
 export type StudioDraft = {
   prompt: string;
+  promptBeforeHistory: string | null;
   capabilityId: string | null;
   capabilityVersion: number | null;
   parameters: ImageStudioParameters;
@@ -18,6 +19,7 @@ export type StudioDraft = {
 };
 const emptyDraft = (): StudioDraft => ({
   prompt: "",
+  promptBeforeHistory: null,
   capabilityId: null,
   capabilityVersion: null,
   parameters: {},

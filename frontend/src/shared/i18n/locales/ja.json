@@ -4207,6 +4207,7 @@
   "imageStudio.results": "生成結果",
   "imageStudio.resultCount": "画像 {0} 枚",
   "imageStudio.restore": "設定を再利用",
+  "imageStudio.undoHistoryPrompt": "プロンプトの復元を取り消す",
   "imageStudio.emptyTitle": "生成結果はまだありません",
   "imageStudio.emptyHint": "下のプロンプトに入力して、最初の画像を生成しましょう。",
   "imageStudio.unknownHint": "プロバイダーが受理したか不明です。システムは自動で再生成しません。再度生成すると新しい試行となり、追加料金が発生する場合があります。",

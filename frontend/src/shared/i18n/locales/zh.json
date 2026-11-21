@@ -4207,6 +4207,7 @@
   "imageStudio.results": "生成结果",
   "imageStudio.resultCount": "{0} 张图片",
   "imageStudio.restore": "回填参数",
+  "imageStudio.undoHistoryPrompt": "撤销回填",
   "imageStudio.emptyTitle": "还没有生成结果",
   "imageStudio.emptyHint": "在下方输入提示词，生成第一张图片。",
   "imageStudio.unknownHint": "供应商是否受理尚不确定。系统不会自动重新生成。再次点击生成会创建新尝试，可能产生额外费用。",

@@ -120,9 +120,23 @@ try {
       [...document.querySelectorAll(".image-studio-history-item")].some(e => e.getClientRects().length),
     );
   }
-  async function chooseBatch(id) {
+  async function chooseBatch(id, keyboard = false) {
     await openHistory();
-    await click(`.image-studio-history-item[data-batch-id="${id}"]`);
+    const selector = `.image-studio-history-item[data-batch-id="${id}"]`;
+    if (keyboard) {
+      let focused = false;
+      for (let step = 0; step < 12; step++) {
+        if (await page(selector => document.activeElement.matches(selector), selector)) {
+          focused = true;
+          break;
+        }
+        await key("Tab", "Tab", 9);
+      }
+      assert.equal(focused, true, "History card can be reached with Tab");
+      await key("Enter", "Enter", 13, "\r");
+    } else {
+      await click(selector);
+    }
     await waitFor(
       id =>
         document.querySelector(`.image-studio-history-item[data-batch-id="${id}"]`)?.getAttribute("aria-pressed") ===
@@ -224,16 +238,30 @@ try {
         await waitFor(() => !document.querySelector(".image-studio-history-drawer"));
         await waitFor(() => document.activeElement.classList.contains("image-studio-history-toggle"));
       }
-      await chooseBatch("synthetic-previous-batch");
+      await chooseBatch("synthetic-previous-batch", viewport.width <= 900);
       await imageReady(1);
+      if (viewport.width <= 900) {
+        await waitFor(() => !document.querySelector(".image-studio-history-drawer"));
+        await waitFor(() => document.activeElement.classList.contains("image-studio-history-toggle"));
+      }
+      assert.equal(await page(() => document.querySelector("textarea").value), "光影摄影练习 · 公开授权示例 · Mock");
+      await click(".image-studio-undo-history-prompt");
       assert.equal(await page(() => document.querySelector("textarea").value), "独立草稿\n第二行\n第三行");
+      assert.equal(
+        await page(() => document.querySelector(".image-studio-image-button").dataset.versionId),
+        "synthetic-previous-version",
+      );
+      assert.equal(await page(() => !!document.querySelector(".image-studio-undo-history-prompt")), false);
       await chooseBatch("synthetic-saved-batch");
       await imageReady(4);
       await waitFor(
         () => document.querySelector(".image-studio-image-button").dataset.versionId === "synthetic-version-1",
       );
+      const savedPrompt = await page(() => document.querySelector("textarea").value);
+      assert.match(savedPrompt, /^清晨海边的小屋/);
       await chooseBatch("synthetic-pending-batch");
       await waitFor(() => !document.querySelector(".image-studio-image-button"));
+      assert.equal(await page(() => document.querySelector("textarea").value), savedPrompt);
       assert.equal(
         (await page(() => window.__imageStudio.evidence())).writes.length,
         0,
@@ -440,6 +468,11 @@ try {
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1487, height: 1058, deviceScaleFactor: 1, mobile: false });
   await navigate("polling");
   await imageReady(3);
+  await chooseBatch("synthetic-saved-batch");
+  await click("textarea");
+  await cdp("Input.insertText", { text: "继续优化光线" });
+  const editedPrompt = await page(() => document.querySelector("textarea").value);
+  assert.match(editedPrompt, /继续优化光线/);
   await click('.image-studio-variant[data-version-id="synthetic-version-1"]');
   await page(() => window.__imageStudio.finishAndLead());
   await imageReady(4);
@@ -453,6 +486,8 @@ try {
     await page(() => document.querySelector(".image-studio-history-item[aria-pressed=true]").dataset.batchId),
     "synthetic-saved-batch",
   );
+  assert.equal(await page(() => document.querySelector("textarea").value), editedPrompt);
+  assert.equal((await page(() => window.__imageStudio.evidence())).writes.length, 0);
   await cdp("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });
   await navigate("grid", "zh", "ok=1");
   await imageReady(4);

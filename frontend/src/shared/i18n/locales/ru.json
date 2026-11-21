@@ -4207,6 +4207,7 @@
   "imageStudio.results": "Результаты",
   "imageStudio.resultCount": "Изображений: {0}",
   "imageStudio.restore": "Повторить настройки",
+  "imageStudio.undoHistoryPrompt": "Отменить подстановку текста",
   "imageStudio.emptyTitle": "Изображений пока нет",
   "imageStudio.emptyHint": "Введите запрос внизу, чтобы создать первое изображение.",
   "imageStudio.unknownHint": "Неизвестно, принял ли провайдер запрос. Автоматической повторной генерации не будет. Новая генерация создаст новую попытку и может повлечь дополнительные расходы.",

@@ -4207,6 +4207,7 @@
   "imageStudio.results": "Results",
   "imageStudio.resultCount": "{0} images",
   "imageStudio.restore": "Reuse settings",
+  "imageStudio.undoHistoryPrompt": "Undo prompt restore",
   "imageStudio.emptyTitle": "No images yet",
   "imageStudio.emptyHint": "Enter a prompt below to generate your first image.",
   "imageStudio.unknownHint": "It is uncertain whether the provider accepted this request. The system will not generate again automatically. Generating again creates a new attempt and may incur additional charges.",
