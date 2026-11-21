@@ -18,6 +18,7 @@ import dev.agenvas.db.tables.CanvasEditCommand.CanvasEditCommandPath;
 import dev.agenvas.db.tables.CanvasEditReceipt.CanvasEditReceiptPath;
 import dev.agenvas.db.tables.CanvasGroup.CanvasGroupPath;
 import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
+import dev.agenvas.db.tables.ImageStudioBatch.ImageStudioBatchPath;
 import dev.agenvas.db.tables.McpOperation.McpOperationPath;
 import dev.agenvas.db.tables.MediaTemplateImportCommand.MediaTemplateImportCommandPath;
 import dev.agenvas.db.tables.ProjectCharacter.ProjectCharacterPath;
@@ -140,6 +141,12 @@ public class Project extends TableImpl<ProjectRecord> {
      */
     public final TableField<ProjectRecord, OffsetDateTime> ARCHIVED_AT = createField(DSL.name("archived_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "归档时间；未归档时为空");
 
+    /**
+     * The column <code>public.project.purpose</code>. 权限与存储作用域用途：CANVAS
+     * 为用户项目，IMAGE_STUDIO 为独立生图工作台内部作用域
+     */
+    public final TableField<ProjectRecord, String> PURPOSE = createField(DSL.name("purpose"), SQLDataType.VARCHAR(32).nullable(false).defaultValue(DSL.field(DSL.raw("'CANVAS'::character varying"), SQLDataType.VARCHAR)), this, "权限与存储作用域用途：CANVAS 为用户项目，IMAGE_STUDIO 为独立生图工作台内部作用域");
+
     private Project(Name alias, Table<ProjectRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -209,7 +216,7 @@ public class Project extends TableImpl<ProjectRecord> {
 
     @Override
     public List<Index> getIndexes() {
-        return Arrays.asList(Indexes.IX_PROJECT_OWNER_CREATED);
+        return Arrays.asList(Indexes.IX_PROJECT_OWNER_CREATED, Indexes.UQ_PROJECT_IMAGE_STUDIO_OWNER);
     }
 
     @Override
@@ -376,6 +383,19 @@ public class Project extends TableImpl<ProjectRecord> {
         return _projectCharacterCommand;
     }
 
+    private transient ImageStudioBatchPath _imageStudioBatch;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.image_studio_batch</code> table
+     */
+    public ImageStudioBatchPath imageStudioBatch() {
+        if (_imageStudioBatch == null)
+            _imageStudioBatch = new ImageStudioBatchPath(this, null, Keys.IMAGE_STUDIO_BATCH__FK_IMAGE_STUDIO_BATCH_PROJECT.getInverseKey());
+
+        return _imageStudioBatch;
+    }
+
     private transient McpOperationPath _mcpOperation;
 
     /**
@@ -524,6 +544,7 @@ public class Project extends TableImpl<ProjectRecord> {
             Internal.createCheck(this, DSL.name("ck_project_archive_time"), "(((((status)::text = 'ACTIVE'::text) AND (archived_at IS NULL)) OR (((status)::text = ANY ((ARRAY['ARCHIVED'::character varying, 'DELETED'::character varying])::text[])) AND (archived_at IS NOT NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_project_aspect_ratio"), "(((aspect_ratio)::text = ANY ((ARRAY['LANDSCAPE_16_9'::character varying, 'PORTRAIT_9_16'::character varying, 'SQUARE_1_1'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_project_name_non_blank"), "((btrim((name)::text) <> ''::text))", true),
+            Internal.createCheck(this, DSL.name("ck_project_purpose"), "(((purpose)::text = ANY ((ARRAY['CANVAS'::character varying, 'IMAGE_STUDIO'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_project_status"), "(((status)::text = ANY ((ARRAY['ACTIVE'::character varying, 'ARCHIVED'::character varying, 'DELETED'::character varying])::text[])))", true)
         );
     }

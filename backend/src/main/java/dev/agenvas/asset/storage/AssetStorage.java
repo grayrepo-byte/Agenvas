@@ -25,6 +25,10 @@ public interface AssetStorage {
     <T> T withTaskImageLock(UUID projectId, UUID assetId, Supplier<T> action);
     <T> T withTaskVideoLock(UUID projectId, UUID assetId, Supplier<T> action);
     <T> T withTaskAudioLock(UUID projectId, UUID assetId, Supplier<T> action);
+    /** Checks availability after recovery has reconstructed and validated the archive receipt. */
+    default void verifyRecoveredArchive(String key, long size, String hash) {
+        verify(key, size, hash);
+    }
     default void verify(String key, long size, String hash) {
         Path file = checkedPath(key);
         try {

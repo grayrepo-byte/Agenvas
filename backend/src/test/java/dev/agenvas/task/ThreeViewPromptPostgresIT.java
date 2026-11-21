@@ -6,6 +6,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -42,6 +43,7 @@ import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.AfterAll;
@@ -74,7 +76,9 @@ import tools.jackson.databind.ObjectMapper;
 class ThreeViewPromptPostgresIT {
     private static final String SETTINGS_PATH = "/api/v1/settings/prompts";
     private static final Path STORAGE = temporaryStorage();
-    private static final List<String> REQUESTS = new CopyOnWriteArrayList<>();
+    private record EditRequest(String prompt, String size, String quality) {
+    }
+    private static final List<EditRequest> REQUESTS = new CopyOnWriteArrayList<>();
     private static final List<List<String>> IMAGE_HASHES = new CopyOnWriteArrayList<>();
     private static final HttpServer SERVER = startServer();
     @Container
@@ -132,13 +136,13 @@ class ThreeViewPromptPostgresIT {
 
     @ParameterizedTest
     @CsvSource({
-            "CHARACTER, image.three-view.character, full-body character turnaround",
-            "FACE, image.three-view.face, facial turnaround",
-            "PROP, image.three-view.prop, prop turnaround",
-            "SCENE_GRID, image.three-view.scene-grid, 2 by 2 environment reference grid"
+            "CHARACTER, image.three-view.character, full-body character turnaround, 4:3, 3264x2448, 2432x1824",
+            "FACE, image.three-view.face, facial turnaround, 16:9, 3840x2160, 2560x1440",
+            "PROP, image.three-view.prop, prop turnaround, 16:9, 3840x2160, 2560x1440",
+            "SCENE_GRID, image.three-view.scene-grid, 2 by 2 environment reference grid, 1:1, 2880x2880, 2048x2048"
     })
-    void editableBuiltInPromptIsFrozenForReplayAndProviderExecution(String type, String key, String originalText)
-            throws Exception {
+    void editableBuiltInPromptIsFrozenForReplayAndProviderExecution(String type, String key, String originalText,
+            String aspectRatio, String defaultSize, String overrideSize) throws Exception {
         var preset = prompts.require(key, PromptService.Kind.FUNCTION);
         assertThat(preset.builtIn()).isTrue();
         assertThat(preset.content()).contains(originalText);
@@ -160,7 +164,9 @@ class ThreeViewPromptPostgresIT {
                 "Synthetic image provider", "OPENAI",
                 "http://127.0.0.1:" + SERVER.getAddress().getPort() + "/v1", "synthetic-image-key");
         var capability = capabilities.publishCapability(connection.id(), "Synthetic image editing",
-                "OPENAI_GPT_IMAGE_2", mapper.createObjectNode());
+                "OPENAI_GPT_IMAGE_2", mapper.readTree("""
+                        {"defaultParameters":{"resolution":"4K","quality":"low","generationCount":4}}
+                        """));
         var function = functions.list().stream().filter(entry -> entry.operation() == MediaFunction.IMAGE_THREE_VIEW)
                 .findFirst().orElseThrow();
         functions.update(MediaFunction.IMAGE_THREE_VIEW, function.version(), capability.id());
@@ -171,7 +177,6 @@ class ThreeViewPromptPostgresIT {
                 mapper.createObjectNode().put("assetId", assetId.toString()).put("sourceType", "UPLOAD"));
         var cardId = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project.id(),
                 image.artifact().id());
-        String aspectRatio = type.equals("CHARACTER") ? "4:3" : type.equals("SCENE_GRID") ? "1:1" : "16:9";
         var parameters = mapper.createObjectNode().put("threeViewType", type)
                 .put("aspectRatio", aspectRatio);
         String guidance = "retain synthetic accessories";
@@ -201,18 +206,41 @@ class ThreeViewPromptPostgresIT {
         assertThat(canvas.list(owner.userId(), project.id())).hasSize(2);
 
         assertThat(worker.submitOnce("synthetic-frozen-views")).isEqualTo(1);
-        assertThat(tasks.get(owner.userId(), project.id(), accepted.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
-        assertThat(REQUESTS).containsExactly(firstPrompt);
+        Task completed = tasks.get(owner.userId(), project.id(), accepted.id());
+        assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(REQUESTS).containsExactly(new EditRequest(firstPrompt, defaultSize, "low"));
+        assertThat(accepted.input().at("/mediaInput/parameters/resolution").asText()).isEqualTo("4K");
+        assertThat(accepted.input().at("/mediaInput/parameters/generationCount").asInt()).isOne();
+        var result = artifacts.requireImageVersionForTask(owner.userId(), project.id(),
+                UUID.fromString(completed.output().path("artifactVersionId").asText()));
+        var archived = assets
+                .get(owner.userId(), project.id(), UUID.fromString(result.content().path("assetId").asText())).asset();
+        assertThat(archived.width() + "x" + archived.height()).isEqualTo(defaultSize);
 
-        Task next = directMedia.runImageOperation(owner.userId(), project.id(), image.artifact().id(),
-                cardId, image.resourceDefaultVersion().id(), 0, ImageOperation.THREE_VIEW, "",
-                functionVersion, 1, List.of(), null, parameters, "synthetic-next-views");
+        var overrides = parameters.deepCopy().put("resolution", "2K").put("quality", "high");
+        assertThatThrownBy(() -> directMedia.runImageOperation(owner.userId(), project.id(), image.artifact().id(),
+                cardId, image.resourceDefaultVersion().id(), 0, ImageOperation.THREE_VIEW, guidance,
+                functionVersion, 1, List.of(), null, overrides, "synthetic-first-views"))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        error -> assertThat(error.code()).isEqualTo("DIRECT_MEDIA_CONFLICT"));
+        var command = mapper.createObjectNode().put("canvasItemId", cardId.toString())
+                .put("sourceVersionId", image.resourceDefaultVersion().id().toString())
+                .put("expectedCanvasItemVersion", 0).put("operation", "THREE_VIEW")
+                .put("expectedFunctionVersion", functionVersion).put("expectedCapabilityVersion", 1)
+                .set("parameters", overrides);
+        var response = mvc.perform(post("/api/v1/projects/{project}/artifacts/{artifact}/image-operations",
+                project.id(), image.artifact().id()).with(authentication(asAdmin())).with(csrf())
+                .header("Idempotency-Key", "synthetic-next-views")
+                .contentType(MediaType.APPLICATION_JSON).content(command.toString()))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        Task next = tasks.get(owner.userId(), project.id(),
+                UUID.fromString(mapper.readTree(response.getContentAsString()).path("id").asText()));
         assertFrozenPrompt(next, secondContent);
         assertThat(next.input().path("promptVersion").asLong()).isEqualTo(beforeSecondEdit.version() + 1);
         assertThat(worker.submitOnce("synthetic-updated-views")).isEqualTo(1);
         assertThat(tasks.get(owner.userId(), project.id(), next.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(REQUESTS).hasSize(2);
-        assertThat(REQUESTS.getLast()).isEqualTo(secondContent);
+        assertThat(REQUESTS.getLast()).isEqualTo(new EditRequest(secondContent, overrideSize, "high"));
     }
 
     @Test
@@ -253,7 +281,7 @@ class ThreeViewPromptPostgresIT {
         assertThat(canvas.list(owner.userId(), project.id())).hasSize(2);
         assertThat(worker.submitOnce("synthetic-outfit-worker")).isEqualTo(1);
         assertThat(tasks.get(owner.userId(), project.id(), accepted.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
-        assertThat(REQUESTS).containsExactly(prompt);
+        assertThat(REQUESTS).containsExactly(new EditRequest(prompt, "832x1248", "medium"));
         assertThat(IMAGE_HASHES).hasSize(1);
         assertThat(IMAGE_HASHES.getFirst()).hasSize(2);
         assertThat(IMAGE_HASHES.getFirst().get(1)).isEqualTo(descriptor.path("sha256").asText());
@@ -283,17 +311,23 @@ class ThreeViewPromptPostgresIT {
                 List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
     }
 
+    private static String formValue(String multipart, String name) throws IOException {
+        int field = multipart.indexOf("name=\"" + name + "\"");
+        int headersEnd = multipart.indexOf("\r\n\r\n", field);
+        int contentEnd = multipart.indexOf("\r\n--", headersEnd + 4);
+        if (field < 0 || headersEnd < 0 || contentEnd < 0)
+            throw new IOException("Missing synthetic multipart field " + name);
+        return multipart.substring(headersEnd + 4, contentEnd);
+    }
+
     private static HttpServer startServer() {
         try {
             var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/v1/images/edits", exchange -> {
                 String multipart = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.ISO_8859_1);
-                int field = multipart.indexOf("name=\"prompt\"");
-                int headersEnd = multipart.indexOf("\r\n\r\n", field);
-                int contentEnd = multipart.indexOf("\r\n--", headersEnd + "\r\n\r\n".length());
-                if (field < 0 || headersEnd < 0 || contentEnd < 0)
-                    throw new IOException("Missing synthetic multipart prompt");
-                REQUESTS.add(multipart.substring(headersEnd + "\r\n\r\n".length(), contentEnd));
+                var request = new EditRequest(formValue(multipart, "prompt"), formValue(multipart, "size"),
+                        formValue(multipart, "quality"));
+                REQUESTS.add(request);
                 List<String> imageHashes = new java.util.ArrayList<>();
                 int offset = 0;
                 while ((offset = multipart.indexOf("name=\"image[]\"", offset)) >= 0) {
@@ -305,7 +339,9 @@ class ThreeViewPromptPostgresIT {
                 }
                 IMAGE_HASHES.add(List.copyOf(imageHashes));
                 var bytes = new ByteArrayOutputStream();
-                ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", bytes);
+                String[] dimensions = request.size().split("x");
+                ImageIO.write(new BufferedImage(Integer.parseInt(dimensions[0]), Integer.parseInt(dimensions[1]),
+                        BufferedImage.TYPE_BYTE_BINARY), "png", bytes);
                 byte[] response = ("{\"data\":[{\"b64_json\":\""
                         + Base64.getEncoder().encodeToString(bytes.toByteArray()) + "\"}]}")
                         .getBytes(StandardCharsets.UTF_8);

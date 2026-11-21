@@ -1,5 +1,6 @@
 package dev.agenvas.project.api;
 
+import dev.agenvas.asset.api.AssetController;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.project.application.ProjectService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,7 +15,7 @@ import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-/** User HTTP reads must not expose deleted projects through owner-scoped resource repositories.
+/** Public project routes require a canvas; private media reads also serve owned Studio archives.
  * Execution services retain their separate access for already accepted work and audit.
  */
 @Configuration(proxyBeanMethods = false)
@@ -44,8 +45,17 @@ public class ProjectAccessConfiguration implements WebMvcConfigurer {
                     } catch (IllegalArgumentException invalidId) {
                         return true;
                     } // Let MVC report path validation.
-                    if (!deleteReplay)
-                        projects.get(principal.userId(), projectId);
+                    if (!deleteReplay) {
+                        // Only the actual immutable media-read handlers cross the technical
+                        // scope boundary. Uploads and ordinary project tools remain canvas-only.
+                        boolean privateAssetRead = handler instanceof HandlerMethod mapped
+                                && mapped.getBeanType() == AssetController.class
+                                && (request.getMethod().equals("GET") || request.getMethod().equals("HEAD"));
+                        if (privateAssetRead)
+                            projects.get(principal.userId(), projectId);
+                        else
+                            projects.requireCanvasProject(principal.userId(), projectId);
+                    }
                 }
                 return true;
             }

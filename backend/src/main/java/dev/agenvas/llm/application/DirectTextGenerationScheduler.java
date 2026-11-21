@@ -1,5 +1,8 @@
 package dev.agenvas.llm.application;
 
+import dev.agenvas.shared.lifecycle.BoundedWorkerExecutor;
+import dev.agenvas.shared.lifecycle.ShutdownGate;
+import jakarta.annotation.PreDestroy;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,18 +18,21 @@ public class DirectTextGenerationScheduler {
     private static final Logger LOGGER = LoggerFactory.getLogger(DirectTextGenerationScheduler.class);
     private final DirectTextGenerationWorker worker;
     private final String workerId = "direct-text-" + UUID.randomUUID();
+    private final BoundedWorkerExecutor executor;
 
-    public DirectTextGenerationScheduler(DirectTextGenerationWorker worker) {
+    public DirectTextGenerationScheduler(DirectTextGenerationWorker worker, ShutdownGate shutdown) {
         this.worker = worker;
+        this.executor = new BoundedWorkerExecutor(shutdown, "direct-text-dispatch", LOGGER,
+                "Direct-text scheduler pass failed: {}");
     }
 
     @Scheduled(initialDelay = 1_500, fixedDelay = 5_000)
     public void tick() {
-        try {
-            worker.runOnce(workerId);
-        } catch (RuntimeException failure) {
-            LOGGER.error("Direct-text scheduler pass failed: {}",
-                    failure.getClass().getSimpleName());
-        }
+        executor.execute(() -> worker.runOnce(workerId));
+    }
+
+    @PreDestroy
+    public void close() {
+        executor.close();
     }
 }

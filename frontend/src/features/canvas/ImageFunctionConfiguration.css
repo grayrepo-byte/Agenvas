@@ -6,6 +6,11 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
+.image-function-output-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  gap: var(--ui-space-3);
+}
 .image-function-controls .image-function-method {
   color: var(--ui-text);
   font-size: var(--ui-text-sm);

@@ -10,7 +10,6 @@ import {
   type CanvasEditRequest,
   type CanvasEditResponse,
   type CanvasEditReplayRequest,
-  type CanvasEditorState,
   type CanvasItem,
 } from "../../shared/api/client";
 import { t } from "../../shared/i18n";
@@ -22,8 +21,8 @@ import {
   type CanvasHistory,
 } from "./canvasHistory";
 import { flushCanvasEditors } from "./canvasEditingGuards";
+import { captureCanvasAcknowledgement } from "./canvasAcknowledgement";
 
-export const canvasEditorKey = (projectId: string) => ["canvas-editor", projectId] as const;
 type EditInput = Omit<CanvasEditRequest, "commandId"> & { commandId?: string };
 type EditFeedback = { showPendingNotice?: boolean };
 type Pending =
@@ -78,25 +77,6 @@ export function useCanvasEditing(projectId: string) {
   }, []);
   const accept = useCallback(
     (saved: CanvasEditResponse) => {
-      queryClient.setQueryData<Canvas>(["canvas", projectId], current => {
-        const cache = new Map(current?.items.map(item => [item.id, item]) ?? []);
-        return {
-          items: saved.items.map(item => {
-            const newer = cache.get(item.id);
-            return newer && newer.version > item.version ? newer : item;
-          }),
-        };
-      });
-      queryClient.setQueryData<CanvasEditorState>(canvasEditorKey(projectId), current => {
-        const cache = new Map(current?.groups.map(group => [group.id, group]) ?? []);
-        return {
-          items: saved.items,
-          groups: saved.groups.map(group => {
-            const newer = cache.get(group.id);
-            return newer && newer.version > group.version ? newer : group;
-          }),
-        };
-      });
       void queryClient.invalidateQueries({ queryKey: ["project-characters", projectId] });
       void queryClient.invalidateQueries({ queryKey: ["artifacts", projectId] });
       void queryClient.invalidateQueries({ queryKey: ["canvas-connections", projectId] });
@@ -114,11 +94,13 @@ export function useCanvasEditing(projectId: string) {
       setError(null);
       pending.current = intent;
       useCanvasStore.getState().setSaveState("saving");
+      const acknowledge = captureCanvasAcknowledgement(queryClient, projectId);
       try {
         const saved =
           intent.type === "EDIT"
             ? await editCanvas(projectId, intent.request)
             : await replayCanvasEdit(projectId, intent.receiptId, intent.request);
+        await acknowledge(saved);
         accept(saved);
         if (intent.type === "EDIT") intent.onAccepted?.(saved);
         const current = historyRef.current;
@@ -146,7 +128,7 @@ export function useCanvasEditing(projectId: string) {
         setActive(null);
       }
     },
-    [accept, projectId, updateHistory],
+    [accept, projectId, queryClient, updateHistory],
   );
   const execute = useCallback<CanvasEditExecutor>(
     async (input, onAccepted, feedback) => {

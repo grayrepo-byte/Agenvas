@@ -56,6 +56,24 @@ public class ProjectService {
         return project;
     }
 
+    /** One internal owner scope supplies existing task/asset authorization without creating canvas nodes. */
+    @Transactional
+    public Project ensureImageStudioScope(UUID ownerId) {
+        Instant now = clock.instant();
+        return projects.ensureImageStudioScope(new Project(UUID.randomUUID(), ownerId,
+                "Image Studio", Project.AspectRatio.SQUARE_1_1, Project.Status.ACTIVE,
+                0, 0, now, now, null));
+    }
+
+    /** Public canvas routes hide internal scopes using the same absent/foreign 404 response. */
+    @Transactional(readOnly = true)
+    public Project requireCanvasProject(UUID ownerId, UUID projectId) {
+        Project project = get(ownerId, projectId);
+        if (!projects.isCanvasScope(ownerId, projectId))
+            throw notFound();
+        return project;
+    }
+
     /** 只读取当前用户拥有的项目；越权 ID 与不存在返回相同的 404。 */
     @Transactional(readOnly = true)
     public Project get(UUID ownerId, UUID projectId) {
@@ -82,6 +100,7 @@ public class ProjectService {
     /** 只读预检使用同一数据库快照检查活动槽位；确认受理仍须调用锁定版本。 */
     @Transactional(readOnly = true)
     public void requireRunSlotAvailableSnapshot(UUID ownerId, UUID projectId) {
+        requireCanvasProject(ownerId, projectId);
         requireActiveProject(ownerId, projectId);
         ProjectRepository.SnapshotAnchor snapshot = projects.findSnapshotAnchor(ownerId, projectId)
                 .orElseThrow(this::notFound);
@@ -96,6 +115,7 @@ public class ProjectService {
     /** 创建 Run 前锁定项目行；归档项目或已有活动 Run 时拒绝占槽。 */
     @Transactional
     public void requireAvailableRunSlot(UUID ownerId, UUID projectId) {
+        requireCanvasProject(ownerId, projectId);
         ProjectRepository.RunSlot slot = projects.lockRunSlot(ownerId, projectId)
                 .orElseThrow(this::notFound);
         if (slot.projectStatus() == Project.Status.DELETED)
@@ -184,7 +204,7 @@ public class ProjectService {
         if (requestedName == null && requestedAspectRatio == null) {
             throw validation(ApiMessage.of("api.project-service.at-least-one-modifiable-field-needs-to-be-provided"));
         }
-        Project current = get(ownerId, projectId);
+        Project current = requireCanvasProject(ownerId, projectId);
         requireActive(current);
         String name = requestedName == null ? current.name() : validateName(requestedName);
         Project.AspectRatio aspectRatio = requestedAspectRatio == null
@@ -200,7 +220,7 @@ public class ProjectService {
     /** 以预期版本归档项目；同一归档命令重放可返回原状态，其他旧版本冲突。 */
     @Transactional
     public Project archive(UUID ownerId, UUID projectId, long expectedVersion) {
-        Project current = get(ownerId, projectId);
+        Project current = requireCanvasProject(ownerId, projectId);
         if (current.status() == Project.Status.ARCHIVED) {
             if (current.version() == expectedVersion + 1) {
                 return current;
@@ -218,6 +238,8 @@ public class ProjectService {
     public void delete(UUID ownerId, UUID projectId, long expectedVersion) {
         if (expectedVersion < 0)
             throw validation(ApiMessage.of("api.project-service.invalid-expected-version"));
+        if (!projects.isCanvasScope(ownerId, projectId))
+            throw notFound();
         ProjectRepository.RunSlot slot = projects.lockRunSlot(ownerId, projectId).orElseThrow(this::notFound);
         Project current = getRetainedProject(ownerId, projectId);
         if (current.status() == Project.Status.DELETED && current.version() == expectedVersion + 1)

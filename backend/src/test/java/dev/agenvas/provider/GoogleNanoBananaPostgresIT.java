@@ -1,6 +1,7 @@
 package dev.agenvas.provider;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -16,9 +17,13 @@ import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.application.MediaExecutionWorker;
+import dev.agenvas.provider.application.MediaFunctionService;
+import dev.agenvas.provider.domain.MediaFunction;
+import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.task.application.TaskService;
+import dev.agenvas.task.domain.ImageOperation;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.testing.ImageAssetFixture;
 import java.awt.image.BufferedImage;
@@ -26,6 +31,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -35,7 +41,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -61,9 +69,13 @@ class GoogleNanoBananaPostgresIT {
     private static final AtomicInteger EDITS = new AtomicInteger();
     private static final AtomicBoolean DROP_NEXT_GENERATION = new AtomicBoolean();
     private static final AtomicReference<JsonNode> LAST_REQUEST = new AtomicReference<>();
+    private static AdminPrincipal owner;
+    @TempDir
+    static Path storage;
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
+        registry.add("agenvas.storage.root", storage::toString);
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
@@ -93,6 +105,8 @@ class GoogleNanoBananaPostgresIT {
     @Autowired
     private MediaCapabilityService catalog;
     @Autowired
+    private MediaFunctionService functions;
+    @Autowired
     private MediaExecutionWorker worker;
     @Autowired
     private TaskService tasks;
@@ -100,6 +114,60 @@ class GoogleNanoBananaPostgresIT {
     private JdbcClient jdbc;
     @Autowired
     private ObjectMapper mapper;
+
+    @BeforeEach
+    void setup() {
+        if (owner == null)
+            owner = identities.setup("google-admin", "google-password-123");
+        GENERATIONS.set(0);
+        EDITS.set(0);
+        DROP_NEXT_GENERATION.set(false);
+        LAST_REQUEST.set(null);
+    }
+
+    @Test
+    void threeViewSendsTheBoundImageSizeAndPinsItAcrossCapabilityUpdates() {
+        var connection = catalog.createConnection("google-views", "Google views",
+                "GOOGLE", "http://127.0.0.1:" + SERVER.getAddress().getPort() + "/v1beta", "fake-google-secret");
+        var capability = catalog.publishCapability(connection.id(), "Views", "GOOGLE_NANO_BANANA_2",
+                mapper.readTree("{\"defaultParameters\":{\"resolution\":\"4K\"}}"));
+        var previous = functions.list().stream().filter(row -> row.operation() == MediaFunction.IMAGE_THREE_VIEW)
+                .findFirst().orElseThrow();
+        functions.update(MediaFunction.IMAGE_THREE_VIEW, previous.version(), capability.id());
+        long functionVersion = previous.version() + 1;
+        var project = projects.create(owner.userId(), "Views", Project.AspectRatio.LANDSCAPE_16_9);
+        var asset = ImageAssetFixture.archive(assets, owner.userId(), project.id());
+        var image = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Source",
+                mapper.createObjectNode().put("assetId", asset.toString()).put("sourceType", "UPLOAD"));
+        var artifact = image.artifact().id();
+        var source = image.resourceDefaultVersion().id();
+        var item = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project.id(), artifact);
+        var parameters = mapper.createObjectNode().put("aspectRatio", "16:9").put("threeViewType", "FACE");
+        assertThatThrownBy(() -> directMedia.runImageOperation(owner.userId(), project.id(), artifact, item, source, 0,
+                ImageOperation.THREE_VIEW, "", functionVersion, 1, List.of(), null,
+                parameters.deepCopy().put("quality", "high"), "google-unsupported-quality"))
+                .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("VALIDATION_ERROR");
+        assertThat(canvas.list(owner.userId(), project.id())).hasSize(1);
+        var accepted = directMedia.runImageOperation(owner.userId(), project.id(), artifact, item, source, 0,
+                ImageOperation.THREE_VIEW, "", functionVersion, 1, List.of(), null, parameters, "google-views-default");
+        assertThat(worker.submitOnce("google-views-worker")).isOne();
+        assertThat(tasks.get(owner.userId(), project.id(), accepted.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(LAST_REQUEST.get().at("/generationConfig/imageConfig/imageSize").asText()).isEqualTo("4K");
+
+        var updated = catalog.updateCapability(connection.id(), capability.id(), capability.version(), "Views", true,
+                "GOOGLE_NANO_BANANA_2", mapper.createObjectNode());
+        var replay = directMedia.runImageOperation(owner.userId(), project.id(), artifact, item, source, 0,
+                ImageOperation.THREE_VIEW, "", functionVersion, 1, List.of(), null, parameters, "google-views-default");
+        assertThat(replay.id()).isEqualTo(accepted.id());
+        assertThat(replay.input().at("/mediaInput/parameters/resolution").asText()).isEqualTo("4K");
+        var next = directMedia.runImageOperation(owner.userId(), project.id(), artifact, item, source, 0,
+                ImageOperation.THREE_VIEW, "", functionVersion, updated.currentVersion(), List.of(), null,
+                parameters.deepCopy().put("resolution", "2K"), "google-views-override");
+        assertThat(worker.submitOnce("google-views-worker")).isOne();
+        assertThat(tasks.get(owner.userId(), project.id(), next.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(LAST_REQUEST.get().at("/generationConfig/imageConfig/imageSize").asText()).isEqualTo("2K");
+        assertThat(EDITS).hasValue(2);
+    }
 
     @Test
     void configuredBetaReferenceUsesEditsAndLostGenerationResponseRemainsUnknown() {
@@ -110,7 +178,6 @@ class GoogleNanoBananaPostgresIT {
                 "GOOGLE_NANO_BANANA_2", mapper.readTree("{}"));
         catalog.setDefault(Task.Kind.IMAGE_GENERATION,
                 catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), ability.id());
-        AdminPrincipal owner = identities.setup("google-admin", "google-password-123");
         Fixture edited = fixture(owner.userId(), "Reference edit", 2);
         Task editTask = approve(owner.userId(), edited);
         assertThat(editTask.input().path("mediaInput").path("images").size()).isEqualTo(2);
@@ -131,6 +198,7 @@ class GoogleNanoBananaPostgresIT {
                 .path("inlineData").path("mimeType").asText()).isEqualTo("image/png");
         assertThat(LAST_REQUEST.get().path("generationConfig").path("imageConfig")
                 .path("aspectRatio").asText()).isEqualTo("16:9");
+        assertThat(LAST_REQUEST.get().at("/generationConfig/imageConfig/imageSize").asText()).isEqualTo("1K");
         UUID completedVersionId = UUID.fromString(
                 completed.output().path("artifactVersionId").asText());
         assertThat(artifacts.requireVersion(owner.userId(), edited.project().id(),
@@ -240,8 +308,6 @@ class GoogleNanoBananaPostgresIT {
     private static void respond(HttpExchange exchange) throws IOException {
         assertThat(exchange.getRequestHeaders().getFirst("x-goog-api-key"))
                 .isEqualTo("fake-google-secret");
-        assertThat(LAST_REQUEST.get().path("generationConfig").path("imageConfig")
-                .path("imageSize").asText()).isEqualTo("1K");
         BufferedImage image = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB);
         ByteArrayOutputStream png = new ByteArrayOutputStream();
         ImageIO.write(image, "png", png);

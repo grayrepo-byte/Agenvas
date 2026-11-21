@@ -5,6 +5,7 @@ import {
   FolderSimple,
   GearSix,
   HardDrives,
+  ImageSquare,
   ListMagnifyingGlass,
   PlugsConnected,
   Robot,
@@ -16,8 +17,9 @@ import {
 } from "@/shared/ui/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, type ReactNode } from "react";
+import { useImageStudioDraftStore } from "../../features/image-studio/imageStudioDraft";
 import { useCanvasStore } from "../../features/canvas/canvasStore";
-import { Link, Navigate, useLocation, useNavigate } from "react-router";
+import { Link, Navigate, useLocation, useMatch, useNavigate } from "react-router";
 import { HTTP_STATUS, ApiError, getCurrentUser, logout } from "../api/client";
 import { t, useLocale } from "../i18n";
 import { LanguageSelect } from "../i18n/LanguageSelect";
@@ -37,6 +39,13 @@ const NAVIGATION = [
       return t("common.project");
     },
     icon: FolderSimple,
+  },
+  {
+    to: "/image-studio",
+    get label() {
+      return t("imageStudio.title");
+    },
+    icon: ImageSquare,
   },
   {
     to: "/library",
@@ -112,7 +121,7 @@ const NAVIGATION = [
 
 /** Settings retain the same destinations and collapse state as the workspace. */
 const SETTINGS_GROUPS = [
-  { label: "ui.pageShell.workspace", paths: ["/projects", "/library", "/skills"] },
+  { label: "ui.pageShell.workspace", paths: ["/projects", "/image-studio", "/library", "/skills"] },
   {
     label: "settings.workspace.configuration",
     paths: ["/settings/director", "/settings/providers", "/settings/media", "/settings/functions", "/settings/storage"],
@@ -138,9 +147,15 @@ export function PageShell({
   const toggleNavigation = useNavigationStore(state => state.toggle);
   const location = useLocation();
   const navigation = useRef<HTMLElement>(null);
-  const activePath = location.pathname === "/settings/llm" ? "/settings/providers" : location.pathname;
+  const isImageStudio = !!useMatch("/image-studio");
+  const activePath = isImageStudio
+    ? "/image-studio"
+    : location.pathname === "/settings/llm"
+      ? "/settings/providers"
+      : location.pathname;
   const isSettings = activePath.startsWith("/settings/");
-  const isStudio = isSettings || activePath === "/projects" || activePath === "/library" || activePath === "/skills";
+  const isStudio =
+    isSettings || activePath === "/projects" || isImageStudio || activePath === "/library" || activePath === "/skills";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const session = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
@@ -148,6 +163,7 @@ export function PageShell({
     mutationFn: logout,
     onSuccess: () => {
       useCanvasStore.getState().clearTextGenerationDrafts();
+      useImageStudioDraftStore.getState().clear();
       queryClient.clear();
       navigate("/login", { replace: true });
     },
@@ -189,6 +205,20 @@ export function PageShell({
   );
   // A failed background refresh must not unmount forms and discard their drafts.
   if (!session.data) return <main className="app-page app-page-loading">{sessionError}</main>;
+
+  if (isImageStudio) {
+    return (
+      <div className="app-page app-shell app-shell--image-studio">
+        <a className="app-skip-link" href="#page-content">
+          {t("ui.pageShell.skipToContent")}
+        </a>
+        <main className="app-page-main" id="page-content" tabIndex={-1}>
+          {session.isError ? sessionError : null}
+          {children}
+        </main>
+      </div>
+    );
+  }
 
   const activeItem = NAVIGATION.find(item => item.to === activePath);
   const PageIcon = activeItem?.icon ?? GearSix;

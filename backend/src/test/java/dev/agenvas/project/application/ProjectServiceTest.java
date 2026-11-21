@@ -21,6 +21,7 @@ class ProjectServiceTest {
     private final ProjectService service = new ProjectService(rows, Clock.fixed(now, ZoneOffset.UTC));
 
     private void stored(Project.Status status, long version, UUID runId) {
+        when(rows.isCanvasScope(owner, id)).thenReturn(true);
         when(rows.findById(owner, id)).thenReturn(Optional.of(new Project(id, owner, "Project",
                 Project.AspectRatio.SQUARE_1_1, status, 0, version, now, now,
                 status == Project.Status.ACTIVE ? null : now)));
@@ -72,6 +73,20 @@ class ProjectServiceTest {
     void hidesNonexistentAndForeignProjects() {
         when(rows.lockRunSlot(owner, id)).thenReturn(Optional.empty());
         assertCode(() -> service.delete(owner, id, 0), "RESOURCE_NOT_FOUND");
+        verify(rows, never()).delete(any(), any(), anyLong(), any());
+    }
+
+    @Test
+    void hidesInternalScopesFromCanvasManagementWhileKeepingMediaAuthorization() {
+        stored(Project.Status.ACTIVE, 0, null);
+        when(rows.isCanvasScope(owner, id)).thenReturn(false);
+        assertThat(service.get(owner, id).id()).isEqualTo(id);
+        assertCode(() -> service.requireCanvasProject(owner, id), "RESOURCE_NOT_FOUND");
+        assertCode(() -> service.update(owner, id, 0, "New title", null), "RESOURCE_NOT_FOUND");
+        assertCode(() -> service.archive(owner, id, 0), "RESOURCE_NOT_FOUND");
+        assertCode(() -> service.delete(owner, id, 0), "RESOURCE_NOT_FOUND");
+        verify(rows, never()).update(any(), any(), anyLong(), any(), any(), any());
+        verify(rows, never()).archive(any(), any(), anyLong(), any());
         verify(rows, never()).delete(any(), any(), anyLong(), any());
     }
 

@@ -1,16 +1,10 @@
 import { useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  ApiError,
-  applyCanvasCommands,
-  HTTP_STATUS,
-  type Canvas,
-  type CanvasCommand,
-  type CanvasItem,
-} from "../../shared/api/client";
+import { ApiError, HTTP_STATUS, type Canvas, type CanvasCommand, type CanvasItem } from "../../shared/api/client";
 import { useCanvasStore, type LayoutDraft } from "./canvasStore";
 import { persistableNodeSize } from "./imageNodeLayout";
 import { canvasItemPresentation, type CanvasEditExecutor } from "./useCanvasEditing";
+import { saveCanvasCommands } from "./canvasAcknowledgement";
 
 /** The existing canvas command API accepts at most 100 commands per transaction. */
 const CANVAS_LAYOUT_BATCH_SIZE = 100;
@@ -62,7 +56,7 @@ export function useCanvasLayoutSave(
   const mutation = useMutation<Canvas, Error, LayoutSubmission>({
     retry: false,
     mutationFn: async ({ commands, input, submitted }) => {
-      if (!execute) return applyCanvasCommands(projectId, commands);
+      if (!execute) return saveCanvasCommands(queryClient, projectId, commands);
       const updates = Array.isArray(input) ? input : [input];
       const result = await execute(
         {
@@ -93,18 +87,7 @@ export function useCanvasLayoutSave(
       useCanvasStore
         .getState()
         .setSaveState(error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT ? "conflict" : "failed"),
-    onSuccess: (saved, { submitted }) => {
-      queryClient.setQueryData<Canvas>(["canvas", projectId], current => {
-        if (!current) return saved;
-        const cached = new Map(current.items.map(item => [item.id, item]));
-        return {
-          ...saved,
-          items: saved.items.map(item => {
-            const newer = cached.get(item.id);
-            return newer && newer.version > item.version ? newer : item;
-          }),
-        };
-      });
+    onSuccess: (_, { submitted }) => {
       for (const { itemId, draft } of submitted) {
         useCanvasStore.getState().clearDraftIfUnchanged(itemId, draft);
       }

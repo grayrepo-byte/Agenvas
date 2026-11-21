@@ -125,7 +125,7 @@ public class CanvasService {
     /** 读取持久化产物布局和其内容版本。 */
     @Transactional(readOnly = true)
     public List<CanvasEntry> list(UUID ownerId, UUID projectId) {
-        projects.get(ownerId, projectId);
+        projects.requireCanvasProject(ownerId, projectId);
         return entries(ownerId, projectId, canvasItems.list(ownerId, projectId));
     }
 
@@ -135,6 +135,7 @@ public class CanvasService {
             UUID targetItemId, long expectedSourceVersion, long expectedSourceDraftVersion,
             BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height, int zIndex) {
         DuplicateResult copied = events.recordChange(ownerId, projectId, () -> {
+            projects.requireCanvasProject(ownerId, projectId);
             projects.requireActiveProject(ownerId, projectId);
             validateGeometry(x, y, width, height, zIndex);
             CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
@@ -200,7 +201,7 @@ public class CanvasService {
     /** Lists this node's immutable results, excluding results owned by other work branches. */
     @Transactional(readOnly = true)
     public List<ArtifactVersion> listMediaVersions(UUID ownerId, UUID projectId, UUID itemId) {
-        projects.get(ownerId, projectId);
+        projects.requireCanvasProject(ownerId, projectId);
         CanvasItem item = requireMediaItem(ownerId, projectId, itemId, false);
         Set<UUID> ids = new HashSet<>(canvasItems.mediaVersionIds(ownerId, projectId, itemId));
         return artifacts.listVersions(ownerId, projectId, item.subjectId()).stream()
@@ -212,6 +213,7 @@ public class CanvasService {
     public CanvasEntry selectMediaVersion(UUID ownerId, UUID projectId, UUID itemId,
             UUID versionId, long expectedVersion) {
         return events.recordChange(ownerId, projectId, () -> {
+            projects.requireCanvasProject(ownerId, projectId);
             projects.requireActiveProject(ownerId, projectId);
             CanvasItem item = requireMediaItem(ownerId, projectId, itemId, true);
             if (item.version() != expectedVersion)
@@ -279,6 +281,7 @@ public class CanvasService {
         // A deleted project keeps Artifact audit results without changing its retired canvas projection.
         if (projects.getRetainedProject(ownerId, projectId).status() == Project.Status.DELETED)
             return;
+        projects.requireCanvasProject(ownerId, projectId);
         CanvasItem item = canvasItems.findForUpdate(ownerId, projectId, itemId).orElse(null);
         if (item == null)
             return;
@@ -325,6 +328,7 @@ public class CanvasService {
             UUID artifactId, int outputIndex, JsonNode frozenInput) {
         if (projects.getRetainedProject(ownerId, projectId).status() == Project.Status.DELETED)
             return null;
+        projects.requireCanvasProject(ownerId, projectId);
         // TaskService validates each protocol's count before placement; decomposition can include 16 extra layers.
         if (outputIndex < 1 || outputIndex >= dev.agenvas.provider.domain.NativeMediaProtocol.MAX_RESULTS)
             throw validation(ApiMessage.of("api.canvas-service.the-result-sequence-number-is-invalid"));
@@ -369,6 +373,7 @@ public class CanvasService {
             throw validation(
                     ApiMessage.of("api.canvas-service.the-media-output-sequence-number-must-be-between-0-and"));
         }
+        projects.requireCanvasProject(ownerId, projectId);
         projects.requireActiveProject(ownerId, projectId);
         CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
                 .orElseThrow(this::notFound);
@@ -433,6 +438,7 @@ public class CanvasService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public CanvasItem forkAudioDerivationWithinChange(UUID ownerId, UUID projectId,
             UUID sourceItemId, String resultLabel) {
+        projects.requireCanvasProject(ownerId, projectId);
         projects.requireActiveProject(ownerId, projectId);
         CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
                 .orElseThrow(this::notFound);
@@ -468,6 +474,7 @@ public class CanvasService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public CanvasItem placeGeneratedArtifactWithinChange(UUID ownerId, UUID projectId,
             UUID artifactId, UUID groupId) {
+        projects.requireCanvasProject(ownerId, projectId);
         projects.requireActiveProject(ownerId, projectId);
         ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId, artifactId);
         return placeGeneratedArtifact(ownerId, projectId, artifact, mediaSelection(artifact), groupId);
@@ -481,6 +488,7 @@ public class CanvasService {
             UUID sourceItemId, UUID sourceVersionId) {
         if (projects.getRetainedProject(ownerId, projectId).status() == Project.Status.DELETED)
             return null;
+        projects.requireCanvasProject(ownerId, projectId);
         ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId, artifactId);
         if (artifact.artifact().kind() != Artifact.Kind.TEXT)
             throw new IllegalArgumentException("Expected a text task result");
@@ -537,6 +545,7 @@ public class CanvasService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public CanvasItem ensureMediaReferenceWithinChange(UUID ownerId, UUID projectId,
             UUID artifactId, UUID versionId, UUID groupId, UUID excludeItemId) {
+        projects.requireCanvasProject(ownerId, projectId);
         projects.requireActiveProject(ownerId, projectId);
         ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId, artifactId);
         artifacts.requireVersion(ownerId, projectId, artifactId, versionId);
@@ -556,6 +565,7 @@ public class CanvasService {
     public OutputPlacements placeArtifactsWithinChange(UUID ownerId, UUID projectId,
             List<UUID> artifactIds, UUID groupId) {
         requireDistinctPlacements(artifactIds);
+        projects.requireCanvasProject(ownerId, projectId);
         projects.requireActiveProject(ownerId, projectId);
         List<CanvasItem> created = new ArrayList<>();
         List<CanvasItem> alreadyPresent = new ArrayList<>();
@@ -726,6 +736,7 @@ public class CanvasService {
                 frozenInput.set("directorScene", directorScene.deepCopy());
         }
         return events.recordChange(ownerId, projectId, () -> {
+            projects.requireCanvasProject(ownerId, projectId);
             projects.requireActiveProject(ownerId, projectId);
             CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, itemId)
                     .orElseThrow(this::notFound);
@@ -835,6 +846,7 @@ public class CanvasService {
     /** 调用方已锁定项目事件序号；逐条验证目标资源和版本后返回完整布局。 */
     private List<CanvasEntry> applyLocked(
             UUID ownerId, UUID projectId, List<? extends CanvasCommand> commands) {
+        projects.requireCanvasProject(ownerId, projectId);
         projects.requireActiveProject(ownerId, projectId);
         if (commands == null || commands.isEmpty() || commands.size() > MAX_COMMANDS) {
             throw validation(ApiMessage.of("api.canvas-service.commands-must-contain-between-1-and-100-commands"));

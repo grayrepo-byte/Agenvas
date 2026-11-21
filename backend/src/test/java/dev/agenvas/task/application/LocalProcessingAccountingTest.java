@@ -17,6 +17,7 @@ import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
+import dev.agenvas.provider.application.ArchivedMediaRecovery;
 import dev.agenvas.provider.application.PinnedMediaPublications;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
@@ -46,7 +47,7 @@ class LocalProcessingAccountingTest {
     private final TaskService service = new TaskService(mock(AgentRunService.class), mock(ProjectService.class),
             mock(ArtifactService.class), mock(MediaDraftService.class), mock(CanvasService.class), repository,
             new TaskProperties(null, 0), events, usage, mapper, Clock.fixed(NOW, ZoneOffset.UTC), new ShutdownGate(),
-            mock(PinnedMediaPublications.class));
+            mock(PinnedMediaPublications.class), mock(ArchivedMediaRecovery.class));
 
     @BeforeEach
     void setup() {

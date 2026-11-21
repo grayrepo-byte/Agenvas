@@ -207,7 +207,8 @@ class DirectorShotMediaProposalMigrationPostgresIT {
 
     @Test
     void aNewProjectDirectorCopiesTheMigratedDefaultThroughTheApplicationService() throws Exception {
-        migration("38").migrate();
+        // Historical V38 behavior is covered above; current repositories require the current schema.
+        migration("latest").migrate();
         UUID owner = UUID.randomUUID();
         try (Connection db = connection()) {
             db.setAutoCommit(false);
@@ -229,8 +230,7 @@ class DirectorShotMediaProposalMigrationPostgresIT {
             String defaultContent = scalar(db, "select content from prompt_definition where key='agent.director'");
             assertThat(director.instruction()).isEqualTo(defaultContent.strip())
                     .hasSizeLessThanOrEqualTo(PromptService.MAX_CONTENT_LENGTH)
-                    .contains("read_storyboard", "shotId", "expectedShotRevision", "不传 role",
-                            "用户显式批准生成并选用具体结果", "旧提案失效，不自动重试");
+                    .contains("read_storyboard", "shotId", "expectedShotRevision", "propose_media_generation");
             assertDirector(db, project.id(), director.id(), director.name(), 0, 1, defaultContent.strip());
             var restored = directors.ensureDirector(owner, project.id());
             assertThat(restored.id()).isEqualTo(director.id());
@@ -345,7 +345,7 @@ class DirectorShotMediaProposalMigrationPostgresIT {
     }
 
     private Flyway migration(String target) {
-        // Pin both endpoints so future migrations cannot silently expand this suite's scope.
+        // Historical checks pin both endpoints; the current-service smoke check tracks latest.
         return Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").cleanDisabled(false).target(target).load();
     }

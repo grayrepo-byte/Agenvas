@@ -14,7 +14,10 @@ import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.task.domain.MediaExecutionSurface;
 import dev.agenvas.task.domain.VideoOperation;
+import dev.agenvas.provider.application.ArchivedMediaRecovery;
+import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.application.PinnedMediaPublications;
 import dev.agenvas.provider.domain.MediaAdapterRegistry.PublicDiagnostic;
@@ -26,15 +29,19 @@ import dev.agenvas.shared.lifecycle.ShutdownGate;
 import dev.agenvas.usage.application.UsageService;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.regex.Pattern;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -45,6 +52,7 @@ import tools.jackson.databind.node.ObjectNode;
 @Service
 public class TaskService {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(TaskService.class);
     private static final Pattern PREFLIGHT_CODE = Pattern.compile("[A-Z][A-Z0-9_]{0,119}");
     public static final String AGENT_STREAM_PROPERTY = "assistantStream";
     /** 公开回答投影允许 8 MiB 文本，配合模型响应预算；JSON 协议封装另由 LLM 模块校验。 */
@@ -57,6 +65,7 @@ public class TaskService {
 
     private static final int MAX_TASK_KEY_LENGTH = 160;
     private static final int MAX_ERROR_CODE_LENGTH = 120;
+    private static final Duration ARCHIVE_RECOVERY_DELAY = Duration.ofSeconds(30);
 
     /** 核对任务所属 Run 的可执行状态及取消边界。 */
     private final AgentRunService runs;
@@ -81,6 +90,7 @@ public class TaskService {
     /** 停机开始后阻止新的后台任务进入执行阶段。 */
     private final ShutdownGate shutdownGate;
     private final PinnedMediaPublications publications;
+    private final ArchivedMediaRecovery archivedMedia;
 
     /** 组装任务权限、输入快照、依赖调度、租约、账本及项目事件边界。
      * @param runs 校验所属 Run 并推进编排状态
@@ -106,7 +116,7 @@ public class TaskService {
             UsageService usage,
             ObjectMapper objectMapper,
             Clock clock,
-            ShutdownGate shutdownGate, PinnedMediaPublications publications) {
+            ShutdownGate shutdownGate, PinnedMediaPublications publications, ArchivedMediaRecovery archivedMedia) {
         this.runs = runs;
         this.projects = projects;
         this.artifacts = artifacts;
@@ -120,6 +130,7 @@ public class TaskService {
         this.clock = clock;
         this.shutdownGate = shutdownGate;
         this.publications = publications;
+        this.archivedMedia = archivedMedia;
     }
 
     /**
@@ -286,7 +297,7 @@ public class TaskService {
         return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueBoundMedia);
     }
 
-    /** Polls only requests previously accepted for version-pinned media work. */
+    /** Claims accepted original requests and confirmed Studio results awaiting private archival. */
     @Transactional
     public List<Task> claimBoundMediaPolls(String requestedWorkerId, int requestedLimit) {
         return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueBoundMediaPolls);
@@ -791,14 +802,23 @@ public class TaskService {
     @Transactional
     public ArtifactService.TaskVersionResult succeedWithArtifacts(Task lease, String workerId,
             List<ArchivedProviderResult> results, JsonNode providerUsage) {
+        return publishMediaResults(lease, workerId, results, providerUsage, null);
+    }
+
+    private ArtifactService.TaskVersionResult publishMediaResults(Task lease, String workerId,
+            List<ArchivedProviderResult> results, JsonNode providerUsage, UUID recoveryRequestKey) {
         JsonNode content = validateMediaResults(lease, results);
         UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
         Instant now = clock.instant();
         return events.recordChange(ownerId, lease.projectId(), () -> {
             Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            boolean recovering = recoveryRequestKey != null;
+            if (recovering && (current.leaseEpoch() != lease.leaseEpoch() || !isExpiredSubmission(current, now)))
+                throw leaseLost();
             TaskRepository.ArtifactTarget target = tasks.findArtifactTarget(lease.id())
                     .orElseThrow(() -> validation(
                             ApiMessage.of("api.task-service.the-media-task-is-missing-a-snapshot-of-the-production")));
+            validateImageStudioSurface(lease, target);
             AgentRun run = lease.runId() == null
                     ? null
                     : runs.getForTaskCompletion(ownerId, lease.projectId(), lease.runId());
@@ -820,7 +840,7 @@ public class TaskService {
                     && pinnedMediaInputsCurrent(ownerId, lease);
             boolean selectResult = allowTargetSelection
                     && (lease.runId() != null || canvasItemId != null);
-            boolean acknowledgedPoll = requireMediaResultLease(current, lease, workerId, canceled, now);
+            boolean acknowledgedPoll = !recovering && requireMediaResultLease(current, lease, workerId, canceled, now);
             if (content == null || !content.path("sourceTaskId").asText("")
                     .equals(lease.id().toString())) {
                 throw validation(
@@ -835,17 +855,25 @@ public class TaskService {
             output.put("selected", result.selected());
             // New output cards have no previous selection or draft to compare with the pinned input.
             boolean allowAdditionalSelection = !explicitSelection && !canceled && !projectInactive;
-            output.set("additionalResults", archiveAdditionalResults(ownerId, lease, target, results,
-                    allowTargetSelection, allowAdditionalSelection));
+            output.set("additionalResults", MediaExecutionSurface.isImageStudio(lease)
+                    ? archiveStudioAdditionalResults(ownerId, lease, target, results)
+                    : archiveAdditionalResults(ownerId, lease, target, results,
+                            allowTargetSelection, allowAdditionalSelection));
             if (providerUsage != null)
                 output.set("providerUsage", providerUsage.deepCopy());
-            if (canceled) {
+            if (recovering) {
+                if (!tasks.finishRecoveredSubmission(current, recoveryRequestKey, output, canceled, now)
+                        || (canceled && !tasks.recordLateResult(lease, output, now))) {
+                    throw leaseLost();
+                }
+            } else if (canceled) {
                 preserveCanceledResult(lease, workerId, output, now);
             } else if (!(acknowledgedPoll
                     ? tasks.finishProviderResult(lease, validateWorkerId(workerId), output, now)
                     : tasks.finishSubmitting(lease, validateWorkerId(workerId), output, now))) {
                 throw leaseLost();
-            } else if (!selectResult && run != null && !lease.approvedMedia()) {
+            }
+            if (!canceled && !selectResult && run != null && !lease.approvedMedia()) {
                 AgentRun latest = runs.getForTaskCompletion(ownerId, lease.projectId(), lease.runId());
                 if (latest.status() == AgentRun.Status.WAITING_TASKS) {
                     runs.transition(ownerId, lease.projectId(), lease.runId(),
@@ -909,8 +937,10 @@ public class TaskService {
                 || current.status() == Task.Status.CANCELED && current.isCancelableLocalProcessing()
                         && current.cancelRequested();
         boolean acknowledgedPoll = current.status() == Task.Status.RUNNING
-                && current.providerRequestId() != null
-                && current.providerRequestId().equals(lease.providerRequestId());
+                && (current.providerRequestId() != null
+                        && current.providerRequestId().equals(lease.providerRequestId())
+                        || current.providerRequestId() == null && current.hasStudioImageResult()
+                                && lease.hasStudioImageResult());
         boolean liveLease = workerId.equals(current.leaseOwner())
                 && current.leaseUntil() != null
                 && current.leaseUntil().isAfter(now);
@@ -940,6 +970,38 @@ public class TaskService {
                 lease.input().has("resultSelectionEpoch") ? lease.input().path("resultSelectionEpoch").asLong() : null,
                 lease.input().has("resultDraftVersion") ? lease.input().path("resultDraftVersion").asLong() : null);
         return new ArtifactService.TaskVersionResult(result.versionId(), cardSelected);
+    }
+
+    /** Studio has an explicit archive-only contract; a contradictory node identity must fail closed. */
+    private void validateImageStudioSurface(Task task, TaskRepository.ArtifactTarget target) {
+        if (!MediaExecutionSurface.isImageStudio(task))
+            return;
+        if (task.kind() != Task.Kind.IMAGE_GENERATION || task.runId() != null
+                || target.canvasItemId() != null || task.input().has("canvasItemId")
+                || task.input().has("sourceCanvasItemId")) {
+            throw validation(ApiMessage.of(
+                    "api.task-service.card-targets-for-the-media-task-were-inconsistent-with-fixed"));
+        }
+    }
+
+    /** Native multi-output responses retain every immutable result without invoking canvas placement. */
+    private ArrayNode archiveStudioAdditionalResults(UUID ownerId, Task lease,
+            TaskRepository.ArtifactTarget target, List<ArchivedProviderResult> results) {
+        ArrayNode output = objectMapper.createArrayNode();
+        for (ArchivedProviderResult extra : results) {
+            if (extra.primary())
+                continue;
+            if (extra.kind() != Artifact.Kind.IMAGE
+                    || !lease.id().toString().equals(extra.content().path("sourceTaskId").asText())) {
+                throw validation(ApiMessage.of("api.task-service.extra-results-sourcetaskid-is-invalid"));
+            }
+            var version = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(), target.artifactId(),
+                    null, target.expectedCurrentVersionId(), target.expectedArtifactVersion(), extra.content(),
+                    lease.input().path("mediaInput"), false);
+            output.addObject().put("ordinal", extra.ordinal()).put("artifactId", target.artifactId().toString())
+                    .put("artifactVersionId", version.versionId().toString()).put("selected", false);
+        }
+        return output;
     }
 
     /** Ordinary additional outputs consume layout positions; the prebuilt silent-video node does not. */
@@ -1061,7 +1123,7 @@ public class TaskService {
                             || updated.kind() == Task.Kind.VIDEO_GENERATION
                             || updated.kind() == Task.Kind.AUDIO_GENERATION)
                     && before.status() == Task.Status.RUNNING
-                    && before.providerRequestId() == null
+                    && before.providerRequestId() == null && !before.hasStudioImageResult()
                     && (updated.status() == Task.Status.FAILED
                             || updated.status() == Task.Status.CANCELED)) {
                 usage.releaseUnsubmittedMediaTask(ownerId, updated);
@@ -1169,6 +1231,67 @@ public class TaskService {
                         : RunningHubDefinition.MAX_OUTPUTS;
     }
 
+    /**
+     * Confirms a one-shot image response without inventing a provider request ID. The marker is saved before
+     * consuming its stream so lease recovery can only archive saved bytes, including after cancellation.
+     */
+    @Transactional
+    public void checkpointStudioImageResult(Task lease, String workerId, String requestKey, JsonNode metadata) {
+        if (!MediaExecutionSurface.isImageStudio(lease) || lease.kind() != Task.Kind.IMAGE_GENERATION
+                || requestKey == null || !requestKey.matches("[0-9a-fA-F-]{36}"))
+            throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid"));
+        UUID.fromString(requestKey);
+        UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
+        events.recordChange(ownerId, lease.projectId(), () -> {
+            Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            ObjectNode output = current.output() != null && current.output().isObject()
+                    ? (ObjectNode) current.output().deepCopy()
+                    : objectMapper.createObjectNode();
+            ObjectNode completed = output.putObject(Task.STUDIO_IMAGE_RESULT_PROPERTY)
+                    .put("schemaVersion", Task.STUDIO_IMAGE_RESULT_SCHEMA_VERSION).put("requestKey", requestKey);
+            // OpenAI's public usage is bounded numeric data; no raw model response, URL or reasoning is stored.
+            JsonNode usage = metadata == null ? null : metadata.get("imageTokenUsage");
+            if (usage != null && usage.isObject()) {
+                ObjectNode safe = objectMapper.createObjectNode();
+                boolean valid = usage.path("valid").asBoolean(false);
+                for (String key : dev.agenvas.provider.domain.OpenAiImageUsage.COUNTS) {
+                    JsonNode count = usage.get(key);
+                    if (count == null || count.isNull())
+                        safe.putNull(key);
+                    else if (count.isIntegralNumber() && count.canConvertToInt() && count.asInt() >= 0)
+                        safe.put(key, count.asInt());
+                    else {
+                        safe.putNull(key);
+                        valid = false;
+                    }
+                }
+                safe.put("valid", valid);
+                String model = usage.path("model").asText("");
+                if (model.matches("[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}"))
+                    safe.put("model", model);
+                completed.putObject("providerMetadata").set("imageTokenUsage", safe);
+            }
+            if (!tasks.checkpointStudioImageResult(lease, validateWorkerId(workerId), output, clock.instant()))
+                throw leaseLost();
+            Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            return ProjectEventService.Change.changed(null, taskEvent(updated, true));
+        });
+    }
+
+    /** Releases the failed archive phase, preserving the known completed result and its original usage. */
+    @Transactional
+    public void waitForStudioImageArchive(Task lease, String workerId) {
+        UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
+        events.recordChange(ownerId, lease.projectId(), () -> {
+            Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            if (!current.hasStudioImageResult() || !tasks.deferStudioImageArchive(lease,
+                    validateWorkerId(workerId), clock.instant().plusSeconds(1), clock.instant()))
+                throw leaseLost();
+            Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            return ProjectEventService.Change.changed(null, taskEvent(updated, true));
+        });
+    }
+
     /** Capture synchronous outputs and acknowledge the original response in one fenced transaction. */
     @Transactional
     public void waitForProviderWithResults(Task lease, String workerId, String requestId,
@@ -1207,7 +1330,7 @@ public class TaskService {
     @Transactional
     public void deferProviderPoll(Task lease, String workerId, Instant nextActionAt) {
         Instant now = clock.instant();
-        if (lease.providerRequestId() == null || nextActionAt == null
+        if ((lease.providerRequestId() == null && !lease.hasStudioImageResult()) || nextActionAt == null
                 || !nextActionAt.isAfter(now)) {
             throw validation(ApiMessage
                     .of("api.task-service.the-original-provider-requestid-and-future-verification-time-are-required"));
@@ -1272,6 +1395,10 @@ public class TaskService {
         UUID requestKey = UUID.randomUUID();
         UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
         return events.recordChange(ownerId, lease.projectId(), () -> {
+            if (MediaExecutionSurface.isImageStudio(lease)) {
+                validateImageStudioSurface(lease, tasks.findArtifactTarget(lease.id()).orElseThrow(() -> validation(
+                        ApiMessage.of("api.task-service.the-media-task-is-missing-a-snapshot-of-the-production"))));
+            }
             // The project-row lock also serializes draft and card changes, closing the
             // preflight-to-submission race before any provider request is sent.
             if (projects.getRetainedProject(ownerId, lease.projectId()).status() != Project.Status.ACTIVE) {
@@ -1302,12 +1429,13 @@ public class TaskService {
     }
 
     /**
-     * 将租约已过期且仍处于提交中的任务转为待核对状态，并阻断依赖它的等待中 Run。
-     * 该恢复路径只更新原任务，不会再次向 Provider 提交生成请求。
+     * 过期提交先核对原任务的归档，再将无结果证据的提交转为 UNKNOWN。
+     * 存储核对在数据库事务外执行。最终结果和用量仍由同一项目事务提交。
      *
      * @param requestedLimit 本轮最多扫描的记录数，实际还受配置上限约束
-     * @return 本轮成功重新分类的任务数
+     * @return 本轮已恢复或转为 UNKNOWN 的任务数
      */
+    @Transactional(propagation = Propagation.NEVER)
     public int recoverExpiredSubmissions(int requestedLimit) {
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
         if (limit < 1) {
@@ -1316,6 +1444,20 @@ public class TaskService {
         Instant now = clock.instant();
         int recovered = 0;
         for (TaskRepository.ExpiredSubmission candidate : tasks.findExpiredSubmissions(now, limit)) {
+            try {
+                if (recoverArchivedSubmission(candidate, now)) {
+                    recovered++;
+                    continue;
+                }
+            } catch (RuntimeException failure) {
+                // A storage outage is not evidence that the archive is absent. Retry on a later scan.
+                if (failure instanceof ApiProblemException problem && "TASK_LEASE_LOST".equals(problem.code()))
+                    continue;
+                LOGGER.warn("Archived submission recovery failed for task {}: {}", candidate.taskId(),
+                        failure.getClass().getSimpleName());
+                deferArchivedSubmissionRecovery(candidate);
+                continue;
+            }
             if (events.recordChange(candidate.ownerId(), candidate.projectId(), () -> {
                 if (!tasks.recoverExpiredSubmission(candidate.taskId(), now)) {
                     return ProjectEventService.Change.unchanged(false);
@@ -1330,6 +1472,44 @@ public class TaskService {
             }
         }
         return recovered;
+    }
+
+    private void deferArchivedSubmissionRecovery(TaskRepository.ExpiredSubmission candidate) {
+        Instant now = clock.instant();
+        events.recordChange(candidate.ownerId(), candidate.projectId(), () -> {
+            if (!tasks.deferExpiredSubmissionRecovery(candidate.taskId(), now, now.plus(ARCHIVE_RECOVERY_DELAY)))
+                return ProjectEventService.Change.unchanged(null);
+            Task deferred = tasks.findById(candidate.taskId()).orElseThrow(this::notFound);
+            return ProjectEventService.Change.changed(null, taskEvent(deferred, true));
+        });
+    }
+
+    private boolean recoverArchivedSubmission(TaskRepository.ExpiredSubmission candidate, Instant now) {
+        Task task = tasks.findById(candidate.taskId()).orElseThrow(this::notFound);
+        // The Studio archive worker resumes confirmed results with their checkpointed usage.
+        if (task.hasStudioImageResult() || !isExpiredSubmission(task, now))
+            return false;
+        var binding = tasks.mediaBinding(task.id());
+        if (binding.isEmpty())
+            return false;
+        var attempt = tasks.listProviderAttempts(candidate.ownerId(), candidate.projectId(), task.id()).stream()
+                .filter(record -> record.status() == ProviderAttempt.Status.SUBMITTING).findFirst();
+        if (attempt.isEmpty())
+            return false;
+        UUID requestKey = attempt.get().requestKey();
+        var content = archivedMedia.recover(new AttemptContext(task, binding.get(), candidate.ownerId(),
+                requestKey.toString(), null));
+        if (content.isEmpty())
+            return false;
+        var kind = Artifact.Kind.valueOf(task.kind().name().replace("_GENERATION", ""));
+        publishMediaResults(task, null, List.of(new ArchivedProviderResult(0, kind, true, content.get())), null,
+                requestKey);
+        return true;
+    }
+
+    private boolean isExpiredSubmission(Task task, Instant now) {
+        return task.status() == Task.Status.SUBMITTING && task.providerRequestId() == null
+                && task.leaseUntil() != null && !task.leaseUntil().isAfter(now);
     }
 
     /**
@@ -1439,6 +1619,30 @@ public class TaskService {
      */
     private boolean pinnedMediaInputsCurrent(UUID ownerId, Task task) {
         JsonNode input = task.input();
+        if (MediaExecutionSurface.isImageStudio(task)) {
+            try {
+                JsonNode frozen = input.path("mediaInput");
+                JsonNode images = frozen.path("images");
+                if (!images.isArray() || !frozen.path("audios").isArray() || !frozen.path("videos").isArray()
+                        || !frozen.path("audios").isEmpty() || !frozen.path("videos").isEmpty())
+                    return false;
+                int order = 0;
+                for (JsonNode image : images) {
+                    var version = artifacts.requireMediaVersionForTask(ownerId, task.projectId(),
+                            UUID.fromString(image.path("versionId").asText()), Artifact.Kind.IMAGE);
+                    if (!version.artifactId().toString().equals(image.path("artifactId").asText())
+                            || !version.content().path("assetId").asText().equals(image.path("assetId").asText())
+                            || !MediaDraft.InputRole.REFERENCE.name().equals(image.path("role").asText())
+                            || image.path("order").asInt(-1) != order++
+                            || artifacts.get(ownerId, task.projectId(), version.artifactId()).artifact()
+                                    .archivedAt() != null)
+                        return false;
+                }
+                return true;
+            } catch (ApiProblemException | IllegalArgumentException unavailable) {
+                return false;
+            }
+        }
         if (task.isAudioTrim()) {
             try {
                 UUID sourceId = UUID.fromString(input.path("audioTrim").path("sourceVersionId").asText());

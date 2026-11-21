@@ -733,17 +733,11 @@ public class DirectMediaTaskService {
                 ? draft.parameters()
                 : ComfyUiWorkflowDefinition.standardParameters(draft.parameters()));
         ImageGenerationParameters imageParameters = !fullyDeclared && kind == Task.Kind.IMAGE_GENERATION
-                ? ImageGenerationParameters.parse(parametersForControls)
+                ? ImageGenerationPreparation.parameters(parametersForControls, capabilities.inputPolicy(binding))
                 : null;
         VideoGenerationParameters videoParameters = !fullyDeclared && kind == Task.Kind.VIDEO_GENERATION
                 ? VideoGenerationParameters.parse(parametersForControls)
                 : null;
-        if (imageParameters != null) {
-            var policy = capabilities.inputPolicy(binding);
-            imageParameters.requireSupported(policy.supportedImageAspectRatios(),
-                    policy.supportedImageResolutions(), policy.supportedImageQualities(),
-                    policy.supportsTransparentBackground());
-        }
         if (KlingProtocol.IMAGE_ADAPTER_ID.equals(binding.adapterId())
                 || KlingProtocol.VIDEO_ADAPTER_ID.equals(binding.adapterId())) {
             KlingProtocol.validatePrompt(renderedPrompt, kind == Task.Kind.VIDEO_GENERATION);
@@ -1274,6 +1268,9 @@ public class DirectMediaTaskService {
                         "api.image-generation-parameters.the-selected-image-capability-does-not-support-aspect-ratio",
                         outputRatio));
             }
+            JsonNode operationSettings = capabilities.settings(binding);
+            var outputParameters = ImageGenerationPreparation.operationParameters(mapper, binding.adapterId(),
+                    inputPolicy, operationSettings, requestedParameters, outputRatio, transparentOutput);
             MediaDraft sourceDraft = drafts.get(ownerId, projectId, canvasItemId);
             CanvasItem outputCard = canvas.forkMediaDerivationWithinChange(ownerId, projectId,
                     canvasItemId, UUID.randomUUID(), sourceDraft.version(), 0,
@@ -1297,7 +1294,6 @@ public class DirectMediaTaskService {
                 input.put("promptKey", functionPrompt.key());
                 input.put("promptVersion", functionPrompt.version());
             }
-            JsonNode operationSettings = capabilities.settings(binding);
             if (operationSettings.has("pricing")
                     && !MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId())) {
                 input.set("mediaPricing", operationSettings.get("pricing"));
@@ -1319,8 +1315,8 @@ public class DirectMediaTaskService {
             if (costumeStyle != null)
                 frozenOperation.set("styleReference", costumeStyle.deepCopy());
             freezeImageOperationMediaInput(input, artifactId, sourceVersionId, operationSettings,
-                    new PreparedImageOperation(binding, definition, prompt, outputRatio,
-                            transparentOutput, referenceVersions, workflowParameters));
+                    new PreparedImageOperation(binding, definition, prompt, outputParameters,
+                            referenceVersions, workflowParameters));
             Task task = new Task(UUID.randomUUID(), projectId, null, commandKey,
                     Task.Kind.IMAGE_GENERATION, Task.Status.READY, false, input,
                     Sha256.hex(input.toString()), null, null, 1, now, null, null, 0, 0,
@@ -1404,18 +1400,13 @@ public class DirectMediaTaskService {
             var workflow = ComfyUiWorkflowDefinition.parse(mapper, settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY),
                     Task.Kind.IMAGE_GENERATION);
             workflow.requireReferences(1 + prepared.references().size());
-            frozen.set("providerParameters", mapper.valueToTree(workflow.dimensions(prepared.outputRatio())));
+            frozen.set("providerParameters", mapper.valueToTree(workflow.dimensions(prepared.output().aspectRatio())));
         }
         frozen.put("parentVersionId", sourceVersionId.toString());
         frozen.put("mode", MediaDraft.VideoInputMode.GENERAL_REFERENCE.name());
         frozen.put("prompt", prepared.prompt());
         frozen.put("renderedPrompt", prepared.prompt());
-        ObjectNode generationParameters = frozen.putObject("parameters");
-        generationParameters.put("aspectRatio", prepared.outputRatio());
-        generationParameters.put("resolution", "1K");
-        generationParameters.put("quality", "high");
-        generationParameters.put("transparentBackground", prepared.transparentOutput());
-        generationParameters.put("generationCount", 1);
+        frozen.set("parameters", prepared.output().toJson(mapper));
         frozen.put("capabilityId", prepared.binding().capabilityId().toString());
         frozen.put("capabilityVersion", prepared.binding().capabilityVersion());
         ArrayNode images = frozen.putArray("images");
@@ -1443,7 +1434,7 @@ public class DirectMediaTaskService {
     }
 
     private record PreparedImageOperation(MediaCapabilityBinding binding, RunningHubDefinition definition,
-            String prompt, String outputRatio, boolean transparentOutput, List<ArtifactVersion> references,
+            String prompt, ImageGenerationParameters output, List<ArtifactVersion> references,
             ObjectNode workflowParameters) {
     }
 
@@ -1742,8 +1733,7 @@ public class DirectMediaTaskService {
     private void requireStaticImage(UUID ownerId, UUID projectId, ArtifactVersion version) {
         var asset = assets.requireReadyMedia(ownerId, projectId,
                 UUID.fromString(version.content().path("assetId").asText()), Asset.MediaKind.IMAGE);
-        if ("image/gif".equals(asset.contentType()))
-            throw invalid(ApiMessage.of("api.asset.gif-static-operation"));
+        ImageGenerationPreparation.requireStaticImage(asset);
     }
 
     /** Reject known protocol limits before creating a task or reserving usage. */

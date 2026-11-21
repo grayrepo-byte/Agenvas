@@ -1,0 +1,454 @@
+import {
+  Aperture,
+  Archive,
+  ArrowsOutSimple,
+  CheckCircle,
+  Clock,
+  ClockCounterClockwise,
+  DownloadSimple,
+  FilmStrip,
+  MinusCircle,
+  Question,
+  WarningCircle,
+} from "@/shared/ui/icons";
+import { useCallback, useEffect, useLayoutEffect, useState, type CSSProperties } from "react";
+import { assetContentUrl, assetThumbnailUrl } from "../../shared/api/client";
+import type { CreateImageStudioBatch, ImageStudioBatch } from "../../shared/api/imageStudio";
+import { t } from "../../shared/i18n";
+import { Notice } from "../../shared/ui/PagePrimitives";
+import { Button } from "../../shared/ui/primitives/button";
+import {
+  ARCHIVE_MISSING_CODE,
+  ARCHIVE_RETRY_CODE,
+  batchReference,
+  batchStatus,
+  studioGallery,
+  taskStatus,
+  type StudioPreview,
+  type StudioSlot,
+  type StudioStatus,
+} from "./studioGallery";
+
+const DOWNLOAD_EXTENSIONS: Readonly<Record<string, string>> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+};
+function downloadFilename(index: number, contentType: string) {
+  const extension = DOWNLOAD_EXTENSIONS[contentType];
+  return extension ? `image-${index}.${extension}` : `image-${index}`;
+}
+
+type FrameStatus = StudioStatus | "imageStudio.loadingPreview" | "media.card.previewUnavailable";
+
+function statusAppearance(status: FrameStatus) {
+  switch (status) {
+    case "imageStudio.status.ready":
+      return { tone: "working", Icon: Clock };
+    case "imageStudio.status.archiving":
+      return { tone: "working", Icon: Archive };
+    case "imageStudio.acceptanceUncertain":
+    case "imageStudio.status.unknown":
+      return { tone: "warning", Icon: Question };
+    case "imageStudio.status.blocked":
+    case "imageStudio.status.archiveMissing":
+    case "imageStudio.status.partial":
+    case "media.card.previewUnavailable":
+      return { tone: "warning", Icon: WarningCircle };
+    case "imageStudio.status.failed":
+      return { tone: "danger", Icon: WarningCircle };
+    case "imageStudio.loadingPreview":
+      return { tone: "idle", Icon: Clock };
+    case "imageStudio.status.canceled":
+    case "imageStudio.emptyTitle":
+      return { tone: "idle", Icon: MinusCircle };
+    case "imageStudio.status.succeeded":
+      return { tone: "complete", Icon: CheckCircle };
+    default:
+      return { tone: "working", Icon: Aperture };
+  }
+}
+
+function BatchNotices({ batch }: { batch: ImageStudioBatch }) {
+  const unknown = batch.tasks.some(task => task.status === "UNKNOWN");
+  const blocked = batch.tasks.some(task => task.status === "BLOCKED");
+  const archiving = batch.tasks.some(task => task.errorCode === ARCHIVE_RETRY_CODE);
+  const missing = batch.tasks.some(task => task.errorCode === ARCHIVE_MISSING_CODE);
+  if (!unknown && !blocked && !batch.tasks.some(task => task.errorCode)) return null;
+  return (
+    <div className="image-studio-task-feedback">
+      {unknown ? (
+        <Notice tone="warning" title={t("imageStudio.status.unknown")}>
+          <p>{t("imageStudio.unknownHint")}</p>
+        </Notice>
+      ) : null}
+      {archiving ? (
+        <Notice title={t("imageStudio.archiveRetryTitle")}>
+          <p>{t("imageStudio.archiveRetryHint")}</p>
+        </Notice>
+      ) : null}
+      {missing ? (
+        <Notice tone="warning" title={t("imageStudio.archiveMissingTitle")}>
+          <p>{t("imageStudio.archiveMissingHint")}</p>
+        </Notice>
+      ) : blocked ? (
+        <Notice tone="warning" title={t("imageStudio.status.blocked")}>
+          <p>{t("imageStudio.blockedHint")}</p>
+        </Notice>
+      ) : null}
+      {batch.tasks.map((task, index) =>
+        task.errorCode ? (
+          <p className="image-studio-task" key={task.id}>
+            <strong>{t("imageStudio.taskLabel", { "0": index + 1 })}</strong>
+            <span>{t(taskStatus(task))}</span>
+            <code>{task.errorCode}</code>
+          </p>
+        ) : null,
+      )}
+    </div>
+  );
+}
+
+function GenerationFrame({
+  status,
+  prompt,
+  format,
+  onExit,
+}: {
+  status: FrameStatus;
+  prompt: string;
+  format: string;
+  onExit?: () => void;
+}) {
+  const { tone, Icon } = statusAppearance(status);
+  return (
+    <div
+      className="image-studio-generation-frame"
+      data-tone={tone}
+      data-exiting={onExit ? "" : undefined}
+      aria-hidden={onExit ? true : undefined}
+      onAnimationEnd={onExit}
+    >
+      <span className="image-studio-frame-corners" aria-hidden="true" />
+      <span className="image-studio-frame-format">{format}</span>
+      <div className="image-studio-frame-content">
+        <span className="image-studio-iris" aria-hidden="true">
+          <Icon weight="duotone" />
+        </span>
+        <h2>{t(status)}</h2>
+        <p title={prompt}>{prompt}</p>
+      </div>
+    </div>
+  );
+}
+
+type ImageOutcome = "ready" | "failed";
+
+function ResultPhoto({
+  preview,
+  original,
+  thumbnail,
+  firstPhoto,
+  onOriginal,
+}: {
+  preview: StudioPreview;
+  original?: ImageOutcome;
+  thumbnail?: ImageOutcome;
+  firstPhoto: boolean;
+  onOriginal: (outcome: ImageOutcome) => void;
+}) {
+  const { result, projectId, index } = preview;
+  return (
+    <span
+      className="image-studio-photo"
+      style={
+        thumbnail === "ready" && (!firstPhoto || original !== "ready")
+          ? { backgroundImage: `url("${assetThumbnailUrl(projectId, result.assetId)}")` }
+          : undefined
+      }
+    >
+      <img
+        src={assetContentUrl(projectId, result.assetId)}
+        width={result.width}
+        height={result.height}
+        alt={t("imageStudio.resultImage", { "0": index })}
+        data-loaded={original === "ready"}
+        onLoad={() => onOriginal("ready")}
+        onError={() => onOriginal("failed")}
+      />
+      {original === "failed" && thumbnail ? (
+        <span className="image-studio-photo-error">
+          {t(thumbnail === "ready" ? "imageStudio.originalUnavailable" : "media.card.previewUnavailable")}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+export type StudioResultsView =
+  | { batch: ImageStudioBatch; gallery: ReturnType<typeof studioGallery> }
+  | { request: CreateImageStudioBatch; pending: boolean };
+
+export function StudioBatchResults({
+  view,
+  awaitingFirstPreview,
+  onFirstPreview,
+  onChoose,
+  onPreview,
+  onRestore,
+  locked,
+}: {
+  view: StudioResultsView;
+  awaitingFirstPreview: boolean;
+  onFirstPreview: (batchId: string, version: string) => void;
+  onChoose: (batchId: string, version: string) => void;
+  onPreview: (preview: StudioPreview) => void;
+  onRestore: (batch: ImageStudioBatch) => void;
+  locked: boolean;
+}) {
+  const batch = "batch" in view ? view.batch : undefined;
+  const { parameters, prompt } = "batch" in view ? view.batch : view.request;
+  const status: StudioStatus =
+    "batch" in view
+      ? batchStatus(view.batch)
+      : view.pending
+        ? "imageStudio.sendingRequest"
+        : "imageStudio.acceptanceUncertain";
+  const gallery = "gallery" in view ? view.gallery : undefined;
+  const active = gallery?.active;
+  const slots: StudioSlot[] =
+    gallery?.slots ?? Array.from({ length: parameters.generationCount ?? 1 }, (_, i) => ({ key: String(i), status }));
+  const [thumbnails, setThumbnails] = useState<Record<string, ImageOutcome>>({});
+  const [originals, setOriginals] = useState<Record<string, ImageOutcome>>({});
+  const [originalCandidate, setOriginalCandidate] = useState<string>();
+  const [reveal, setReveal] = useState<{ version: string; playing: boolean }>();
+  const finishReveal = useCallback(() => {
+    setReveal(current => (current?.playing ? { ...current, playing: false } : current));
+  }, []);
+  let firstReady: StudioPreview | undefined;
+  let thumbnailPending = false;
+  let photo = active;
+  if (awaitingFirstPreview && batch) {
+    let next: StudioPreview | undefined;
+    let current: StudioPreview | undefined;
+    for (const [index, { result }] of slots.entries()) {
+      if (!result) continue;
+      const version = result.artifactVersionId;
+      const preview = { result, projectId: batch.projectId, index: index + 1 };
+      thumbnailPending ||= thumbnails[version] === undefined;
+      if (thumbnails[version] === "ready" || originals[version] === "ready") {
+        firstReady = preview;
+        break;
+      }
+      if (originals[version] !== "failed") {
+        next ??= preview;
+        if (version === originalCandidate) current = preview;
+      }
+    }
+    // Keep one original in flight. Newly archived earlier slots can win via their thumbnails,
+    // but must not interrupt an in-flight original for a later numbered slot.
+    photo = firstReady ?? current ?? next;
+    if (!firstReady && photo?.result.artifactVersionId !== originalCandidate)
+      setOriginalCandidate(photo?.result.artifactVersionId);
+  }
+  const firstVersion = firstReady?.result.artifactVersionId;
+  const batchId = batch?.id;
+  useLayoutEffect(() => {
+    if (!batchId || !firstVersion) return;
+    setReveal({
+      version: firstVersion,
+      playing: !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches,
+    });
+    onFirstPreview(batchId, firstVersion);
+  }, [batchId, firstVersion, onFirstPreview]);
+  const playing = reveal?.playing;
+  useEffect(() => {
+    if (!playing) return;
+    const preference = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (!preference) return;
+    function stopIfReduced() {
+      if (preference?.matches) finishReveal();
+    }
+    preference.addEventListener("change", stopIfReduced);
+    stopIfReduced();
+    return () => preference.removeEventListener("change", stopIfReduced);
+  }, [playing, finishReveal]);
+  const waitingForImage = awaitingFirstPreview && !firstReady;
+  const frameStatus =
+    active && waitingForImage
+      ? photo || thumbnailPending
+        ? "imageStudio.loadingPreview"
+        : "media.card.previewUnavailable"
+      : status;
+  const photoVersion = photo?.result.artifactVersionId;
+  const firstPhoto = awaitingFirstPreview || (reveal !== undefined && reveal.version === photoVersion);
+  const revealing = playing && firstPhoto;
+  const ratio = parameters.aspectRatio && parameters.aspectRatio !== "AUTO" ? parameters.aspectRatio : "1:1";
+  const aspect = photo ? photo.result.width / photo.result.height : ratio.replace(":", " / ");
+  const format = [ratio, parameters.resolution].filter(Boolean).join(" · ");
+  const { tone } = statusAppearance(status);
+  return (
+    <>
+      {batch ? <BatchNotices batch={batch} /> : null}
+      <div className="image-studio-hero" style={{ "--studio-result-ratio": aspect } as CSSProperties}>
+        {photo && photoVersion ? (
+          <Button
+            className="image-studio-image-button"
+            variant="ghost"
+            type="button"
+            data-version-id={photoVersion}
+            data-first-photo={firstPhoto ? "" : undefined}
+            aria-label={t("imageStudio.previewImage", { "0": photo.index })}
+            aria-hidden={waitingForImage || undefined}
+            inert={waitingForImage || undefined}
+            style={waitingForImage ? { visibility: "hidden" } : undefined}
+            onClick={() => onPreview(photo)}
+          >
+            <ResultPhoto
+              key={photoVersion}
+              preview={photo}
+              original={originals[photoVersion]}
+              thumbnail={thumbnails[photoVersion]}
+              firstPhoto={firstPhoto}
+              onOriginal={outcome => setOriginals(previous => ({ ...previous, [photoVersion]: outcome }))}
+            />
+            <span className="image-studio-photo-index" aria-hidden="true">
+              {String(photo.index).padStart(2, "0")} / {String(slots.length).padStart(2, "0")}
+            </span>
+          </Button>
+        ) : null}
+        {!photo || waitingForImage || revealing ? (
+          <GenerationFrame
+            status={revealing ? "imageStudio.loadingPreview" : frameStatus}
+            prompt={prompt}
+            format={format}
+            onExit={revealing ? finishReveal : undefined}
+          />
+        ) : null}
+      </div>
+      <div className="image-studio-gallery">
+        <div className="image-studio-gallery-caption">
+          <div className="image-studio-gallery-summary" role="status" aria-atomic="true">
+            <FilmStrip aria-hidden="true" />
+            <strong>
+              {gallery
+                ? t("imageStudio.readyCount", { "0": gallery.readyCount, "1": slots.length })
+                : t("imageStudio.countLabel", { "0": slots.length })}
+            </strong>
+            <span className={active ? "image-studio-gallery-status" : "sr-only"} data-tone={tone}>
+              {t(status)}
+            </span>
+          </div>
+          {batch ? (
+            <span className="image-studio-batch-reference" title={batch.id}>
+              {t("imageStudio.batchReference", { "0": batchReference(batch.id) })}
+            </span>
+          ) : null}
+        </div>
+        <div className="image-studio-result-tools">
+          <div className="image-studio-filmstrip" role="group" aria-label={t("imageStudio.variants")}>
+            {slots.map((slot, index) => {
+              const number = String(index + 1).padStart(2, "0");
+              const item = slot.result;
+              if (item && batch) {
+                const label = t("imageStudio.chooseVariant", { "0": index + 1 });
+                return (
+                  <Button
+                    key={slot.key}
+                    type="button"
+                    variant="ghost"
+                    className="image-studio-variant"
+                    data-version-id={item.artifactVersionId}
+                    aria-pressed={!waitingForImage && item.artifactVersionId === photoVersion}
+                    aria-label={label}
+                    title={label}
+                    onClick={() => {
+                      finishReveal();
+                      onChoose(batch.id, item.artifactVersionId);
+                    }}
+                  >
+                    <img
+                      src={assetThumbnailUrl(batch.projectId, item.assetId)}
+                      alt=""
+                      onLoad={() => setThumbnails(previous => ({ ...previous, [item.artifactVersionId]: "ready" }))}
+                      onError={() => setThumbnails(previous => ({ ...previous, [item.artifactVersionId]: "failed" }))}
+                    />
+                    <span
+                      className="image-studio-slot-number"
+                      data-first-reveal={revealing && item.artifactVersionId === photoVersion ? "" : undefined}
+                      aria-hidden="true"
+                    >
+                      {number}
+                    </span>
+                  </Button>
+                );
+              }
+              const { tone: slotTone, Icon } = statusAppearance(slot.status);
+              const label = t("imageStudio.slotStatus", { "0": index + 1, "1": t(slot.status) });
+              return (
+                <span
+                  key={slot.key}
+                  className="image-studio-slot"
+                  role="img"
+                  aria-label={label}
+                  title={label}
+                  data-tone={slotTone}
+                >
+                  <Icon aria-hidden="true" />
+                  {active || slot.status !== status ? (
+                    <span className="image-studio-slot-status" aria-hidden="true">
+                      {t(slot.status)}
+                    </span>
+                  ) : null}
+                  <span className="image-studio-slot-number" aria-hidden="true">
+                    {number}
+                  </span>
+                </span>
+              );
+            })}
+          </div>
+          {batch ? (
+            <div className="image-studio-result-actions">
+              <Button
+                className="image-studio-restore"
+                variant="ghost"
+                size="icon-sm"
+                type="button"
+                disabled={locked}
+                aria-label={t("imageStudio.restore")}
+                title={t("imageStudio.restore")}
+                onClick={() => onRestore(batch)}
+              >
+                <ClockCounterClockwise aria-hidden="true" />
+              </Button>
+              {active ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t("imageStudio.expandImage")}
+                    title={t("imageStudio.expandImage")}
+                    onClick={() => onPreview(active)}
+                  >
+                    <ArrowsOutSimple aria-hidden="true" />
+                  </Button>
+                  <Button asChild variant="ghost" size="icon-sm">
+                    <a
+                      href={assetContentUrl(batch.projectId, active.result.assetId)}
+                      download={downloadFilename(active.index, active.result.contentType)}
+                      title={t("imageStudio.downloadImage", { "0": active.index })}
+                      aria-label={t("imageStudio.downloadImage", { "0": active.index })}
+                    >
+                      <DownloadSimple aria-hidden="true" />
+                    </a>
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </>
+  );
+}

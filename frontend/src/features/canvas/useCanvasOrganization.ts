@@ -11,7 +11,8 @@ import {
 import { t } from "../../shared/i18n";
 import { useCanvasStore } from "./canvasStore";
 import { canvasGroupIdFromNodeId, canvasGroupNodeId, projectCanvasGroups } from "./canvasGroups";
-import { canvasEditorKey, canvasItemPresentation, useCanvasEditing } from "./useCanvasEditing";
+import { canvasEditorKey } from "./canvasAcknowledgement";
+import { canvasItemPresentation, useCanvasEditing } from "./useCanvasEditing";
 import { flushCanvasEditors } from "./canvasEditingGuards";
 
 export const CANVAS_EDIT_ITEM_LIMIT = 100;

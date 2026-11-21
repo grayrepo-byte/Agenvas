@@ -35,6 +35,7 @@ import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.task.application.TaskProperties;
+import dev.agenvas.shared.lifecycle.ShutdownGate;
 import dev.agenvas.task.application.TaskRecoveryScheduler;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
@@ -528,8 +529,8 @@ class AgentLocalMediaWorkflowPostgresIT {
     static class TestConfig {
         /** Keep restart/recovery assertions deterministic; the test calls recovery through the application API. */
         @Bean(name = "taskRecoveryScheduler")
-        TaskRecoveryScheduler disabledRecovery(TaskService tasks, TaskProperties properties) {
-            return new TaskRecoveryScheduler(tasks, properties) {
+        TaskRecoveryScheduler disabledRecovery(TaskService tasks, TaskProperties properties, ShutdownGate shutdown) {
+            return new TaskRecoveryScheduler(tasks, properties, shutdown) {
                 @Override
                 public void scan() {
                 }

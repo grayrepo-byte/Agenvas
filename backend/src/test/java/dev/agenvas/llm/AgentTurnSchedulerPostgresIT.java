@@ -5,9 +5,12 @@ import static dev.agenvas.testing.OnDemandToolsetFixture.onlyLoader;
 import static dev.agenvas.testing.OnDemandToolsetFixture.load;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.agent.domain.AgentInstance;
+import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
@@ -18,6 +21,7 @@ import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
+import dev.agenvas.task.application.DirectTextTaskService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
 import java.time.Duration;
@@ -25,9 +29,13 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -45,6 +53,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.ObjectMapper;
 
 /** Confirms the scheduled worker advances a Run without any client connection or polling. */
 @Testcontainers
@@ -79,6 +88,63 @@ class AgentTurnSchedulerPostgresIT {
     private JdbcClient jdbc;
     @Autowired
     private AgentTurnWorker worker;
+    @Autowired
+    private DirectTextTaskService directText;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private ObjectMapper mapper;
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void slowModelCallDoesNotDelayTheOtherScheduledModelQueue(boolean slowAgent) throws Exception {
+        UUID ownerId = owner().userId();
+        Project project = projects.create(ownerId, "Independent model queues", Project.AspectRatio.SQUARE_1_1);
+        AgentInstance director = configureDirector(agents, ownerId, project.id(), "Scheduler director", "Create");
+        var card = artifacts.create(ownerId, project.id(), Artifact.Kind.TEXT, "Text job",
+                mapper.createObjectNode().put("format", "PLAIN_TEXT").put("text", "Original text"));
+        var slow = new FakeGateway.SlowCall(slowAgent);
+        gateway.slowCall = slow;
+        AgentRun run = null;
+        Task text = null;
+        try {
+            if (slowAgent)
+                run = runs.create(ownerId, project.id(), director.id(), "Slow director", "slow-agent").run();
+            else
+                text = startText(ownerId, project.id(), card);
+            assertThat(slow.entered.await(12, TimeUnit.SECONDS)).as("first model call started").isTrue();
+
+            if (slowAgent) {
+                text = startText(ownerId, project.id(), card);
+                UUID textId = text.id();
+                await().atMost(Duration.ofSeconds(10))
+                        .until(() -> tasks.get(ownerId, project.id(), textId).status() == Task.Status.SUCCEEDED);
+            } else {
+                run = runs.create(ownerId, project.id(), director.id(), "Fast director", "fast-agent").run();
+                UUID runId = run.id();
+                await().atMost(Duration.ofSeconds(10))
+                        .until(() -> runs.get(ownerId, project.id(), runId).status() == AgentRun.Status.SUCCEEDED);
+            }
+        } finally {
+            gateway.slowCall = null;
+            slow.release.countDown();
+            if (run != null) {
+                UUID runId = run.id();
+                await().atMost(Duration.ofSeconds(12))
+                        .until(() -> runs.get(ownerId, project.id(), runId).status().terminal());
+            }
+            if (text != null) {
+                UUID textId = text.id();
+                await().atMost(Duration.ofSeconds(12))
+                        .until(() -> tasks.get(ownerId, project.id(), textId).status() == Task.Status.SUCCEEDED);
+            }
+        }
+    }
+
+    private Task startText(UUID owner, UUID project, ArtifactService.ArtifactView card) {
+        return directText.run(owner, project, card.artifact().id(), "Write the text", card.artifact().version(),
+                card.resourceDefaultVersion().id(), "independent-text");
+    }
 
     @Test
     void savedRunFinishesFromDatabaseQueueWithNoOpenHttpRequest() throws Exception {
@@ -228,10 +294,22 @@ class AgentTurnSchedulerPostgresIT {
         private final AtomicBoolean keepRequestingTools = new AtomicBoolean();
         private final AtomicInteger stopAfter = new AtomicInteger();
         private final AtomicInteger preparations = new AtomicInteger();
+        private volatile SlowCall slowCall;
 
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools,
                 Map<String, Object> toolContext) {
+            SlowCall slow = slowCall;
+            if (slow != null && slow.agent == toolContext.containsKey("runId")) {
+                slow.entered.countDown();
+                try {
+                    if (!slow.release.await(30, TimeUnit.SECONDS))
+                        throw new IllegalStateException("Slow model fixture was not released");
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Slow model fixture was interrupted", interrupted);
+                }
+            }
             if (onlyLoader(tools) && (keepRequestingTools.get() || calls.get() < stopAfter.get())) {
                 preparations.incrementAndGet();
                 return load("CANVAS");
@@ -253,6 +331,21 @@ class AgentTurnSchedulerPostgresIT {
         @Override
         public Capabilities capabilities() {
             return new Capabilities(true, false, false);
+        }
+
+        @Override
+        public ModelDetails modelDetails() {
+            return new ModelDetails(true, "TEST", "fake-model", false);
+        }
+
+        private static final class SlowCall {
+            private final boolean agent;
+            private final CountDownLatch entered = new CountDownLatch(1);
+            private final CountDownLatch release = new CountDownLatch(1);
+
+            private SlowCall(boolean agent) {
+                this.agent = agent;
+            }
         }
     }
 }

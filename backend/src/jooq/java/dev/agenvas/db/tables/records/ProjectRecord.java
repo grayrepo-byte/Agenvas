@@ -177,6 +177,22 @@ public class ProjectRecord extends UpdatableRecordImpl<ProjectRecord> {
         return (OffsetDateTime) get(10);
     }
 
+    /**
+     * Setter for <code>public.project.purpose</code>. 权限与存储作用域用途：CANVAS
+     * 为用户项目，IMAGE_STUDIO 为独立生图工作台内部作用域
+     */
+    public void setPurpose(String value) {
+        set(11, value);
+    }
+
+    /**
+     * Getter for <code>public.project.purpose</code>. 权限与存储作用域用途：CANVAS
+     * 为用户项目，IMAGE_STUDIO 为独立生图工作台内部作用域
+     */
+    public String getPurpose() {
+        return (String) get(11);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -200,7 +216,7 @@ public class ProjectRecord extends UpdatableRecordImpl<ProjectRecord> {
     /**
      * Create a detached, initialised ProjectRecord
      */
-    public ProjectRecord(UUID id, UUID ownerId, String name, String aspectRatio, String status, UUID activeRunId, Long eventSeq, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime archivedAt) {
+    public ProjectRecord(UUID id, UUID ownerId, String name, String aspectRatio, String status, UUID activeRunId, Long eventSeq, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime archivedAt, String purpose) {
         super(Project.PROJECT);
 
         setId(id);
@@ -214,6 +230,7 @@ public class ProjectRecord extends UpdatableRecordImpl<ProjectRecord> {
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
         setArchivedAt(archivedAt);
+        setPurpose(purpose);
         resetChangedOnNotNull();
     }
 }

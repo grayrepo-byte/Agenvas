@@ -61,7 +61,6 @@ import { Link, Navigate, useParams, useLocation } from "react-router";
 import {
   HTTP_STATUS,
   ApiError,
-  applyCanvasCommands,
   ensureProjectDirector,
   createArtifact,
   createCanvasConnection,
@@ -141,6 +140,7 @@ import { projectCacheCallbacks } from "./projectCache";
 import { useCanvasDisplayPreferences } from "./useCanvasDisplayPreferences";
 import { useMediaNodeRatios } from "./useMediaNodeRatios";
 import { useCanvasLayoutSave } from "./useCanvasLayoutSave";
+import { saveCanvasCommands } from "./canvasAcknowledgement";
 import { CharacterManagerDialog } from "../characters/CharacterManagerDialog";
 import { characterBindingStale, characterQueryOptions } from "../characters/characterQueries";
 import { Badge } from "../../shared/ui/primitives/badge";
@@ -561,10 +561,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const saveLayout = useCanvasLayoutSave(projectId, effectiveNodeSize, editing.execute);
   const removeItem = useMutation({
     mutationFn: (item: CanvasItem) =>
-      applyCanvasCommands(projectId, [{ type: "REMOVE", itemId: item.id, expectedVersion: item.version }]),
+      saveCanvasCommands(queryClient, projectId, [{ type: "REMOVE", itemId: item.id, expectedVersion: item.version }]),
     ...canvasMutationFeedback,
-    onSuccess: (saved, item) => {
-      queryClient.setQueryData(["canvas", projectId], saved);
+    onSuccess: (_, item) => {
       if (item.characterNode) setCharacterNotice(true);
       clearDraft(item.id);
       editing.clearHistory();
@@ -606,7 +605,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         );
         pending.artifactId = artifact.id;
       }
-      const saved = await applyCanvasCommands(projectId, [
+      await saveCanvasCommands(queryClient, projectId, [
         {
           type: "PLACE_ARTIFACT",
           itemId: pending.itemId,
@@ -619,11 +618,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           groupId: point.groupId,
         },
       ]);
-      return { saved, itemId: pending.itemId };
+      return pending.itemId;
     },
     ...canvasMutationFeedback,
-    onSuccess: ({ saved, itemId }) => {
-      queryClient.setQueryData(["canvas", projectId], saved);
+    onSuccess: itemId => {
       void queryClient.invalidateQueries({ queryKey: ["artifacts", projectId] });
       setSelectedIds([itemId]);
       textProgress.current = null;
@@ -656,7 +654,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         );
         intent.artifactId = artifact.id;
       }
-      return applyCanvasCommands(projectId, [
+      return saveCanvasCommands(queryClient, projectId, [
         {
           type: "PLACE_ARTIFACT",
           itemId: intent.itemId,
@@ -669,8 +667,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       ]);
     },
     ...canvasMutationFeedback,
-    onSuccess: saved => {
-      queryClient.setQueryData(["canvas", projectId], saved);
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["artifacts", projectId] });
       uploadProgress.current = null;
       setSaveState("saved");
@@ -717,7 +714,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         pending.artifactId = artifact.id;
       }
       const index = canvas.data?.items.length ?? 0;
-      const saved = await applyCanvasCommands(projectId, [
+      const saved = await saveCanvasCommands(queryClient, projectId, [
         {
           type: "PLACE_ARTIFACT",
           itemId: pending.itemId,
@@ -734,7 +731,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     },
     ...canvasMutationFeedback,
     onSuccess: ({ saved, itemId, director, initialModel }, { connectionSource }) => {
-      queryClient.setQueryData(["canvas", projectId], saved);
       void queryClient.invalidateQueries({ queryKey: ["artifacts", projectId] });
       if (!connectionSource) setSelectedIds([itemId]);
       if (director) setDirectorItem(saved.items.find(item => item.id === itemId) ?? null);
@@ -1901,8 +1897,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
                   zIndex={canvas.data?.items.length ?? 0}
                   onPlacing={canvasMutationFeedback.onMutate}
                   onPlaceError={setSaveError}
-                  onPlaced={(saved, itemId) => {
-                    queryClient.setQueryData(["canvas", projectId], saved);
+                  onPlaced={(_, itemId) => {
                     setSelectedIds([itemId]);
                     setResourcesOpen(false);
                     setSaveState("saved");

@@ -75,6 +75,7 @@ public class CanvasConnectionService {
             Long expectedTargetDraftVersion, boolean replaceManualSource,
             String slotKey) {
         return events.recordChange(ownerId, projectId, () -> {
+            projects.requireCanvasProject(ownerId, projectId);
             projects.requireActiveProject(ownerId, projectId);
             CanvasItem source = canvasItems.requireArtifactItem(ownerId, projectId,
                     sourceItemId);
@@ -149,6 +150,7 @@ public class CanvasConnectionService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public CanvasConnection createMediaDerivationWithinChange(UUID ownerId, UUID projectId,
             UUID sourceItemId, UUID targetItemId, UUID sourceVersionId) {
+        projects.requireCanvasProject(ownerId, projectId);
         projects.requireActiveProject(ownerId, projectId);
         CanvasItem source = canvasItems.requireArtifactItem(ownerId, projectId, sourceItemId);
         CanvasItem target = canvasItems.requireArtifactItem(ownerId, projectId, targetItemId);
@@ -183,6 +185,7 @@ public class CanvasConnectionService {
     public CanvasConnection createImagePromptDerivationWithinChange(UUID ownerId, UUID projectId,
             UUID sourceItemId, UUID targetItemId, UUID sourceVersionId) {
         projects.getRetainedProject(ownerId, projectId);
+        projects.requireCanvasProject(ownerId, projectId);
         CanvasItem source = canvasItems.requireArtifactItem(ownerId, projectId, sourceItemId);
         CanvasItem target = canvasItems.requireArtifactItem(ownerId, projectId, targetItemId);
         if (artifacts.get(ownerId, projectId, source.subjectId()).artifact().kind() != Artifact.Kind.IMAGE
@@ -203,6 +206,7 @@ public class CanvasConnectionService {
     public ConnectionResult disconnect(UUID ownerId, UUID projectId, UUID connectionId,
             long expectedVersion, Long expectedTargetDraftVersion) {
         return events.recordChange(ownerId, projectId, () -> {
+            projects.requireCanvasProject(ownerId, projectId);
             projects.requireActiveProject(ownerId, projectId);
             CanvasConnection connection = connections.find(ownerId, projectId, connectionId)
                     .orElseThrow(this::notFound);
@@ -232,6 +236,7 @@ public class CanvasConnectionService {
     public MediaDraft removeMediaInput(UUID ownerId, UUID projectId, UUID targetCanvasItemId,
             UUID imageVersionId, long expectedDraftVersion) {
         return events.recordChange(ownerId, projectId, () -> {
+            projects.requireCanvasProject(ownerId, projectId);
             projects.requireActiveProject(ownerId, projectId);
             MediaDraft before = drafts.get(ownerId, projectId, targetCanvasItemId);
             MediaDraft.MediaInput input = before.mediaInputs().stream()
@@ -264,13 +269,14 @@ public class CanvasConnectionService {
 
     @Transactional(readOnly = true)
     public List<CanvasConnection> list(UUID ownerId, UUID projectId) {
-        projects.get(ownerId, projectId);
+        projects.requireCanvasProject(ownerId, projectId);
         return connections.list(ownerId, projectId);
     }
 
     /** Current edges alone cannot detect connect/disconnect ABA; the database keeps its epoch. */
     @Transactional(readOnly = true)
     public CanvasConnectionRepository.TopologyGuard copyGuard(UUID ownerId, UUID projectId, UUID canvasItemId) {
+        projects.requireCanvasProject(ownerId, projectId);
         canvasItems.requireArtifactItem(ownerId, projectId, canvasItemId);
         return connections.copyGuard(ownerId, projectId, canvasItemId);
     }
@@ -278,6 +284,7 @@ public class CanvasConnectionService {
     /** Removes every edge owned by a card and reference-counts downstream media inputs. */
     public void removeItemConnectionsWithinChange(UUID ownerId, UUID projectId,
             UUID canvasItemId) {
+        projects.requireCanvasProject(ownerId, projectId);
         List<CanvasConnection> affected = connections.list(ownerId, projectId).stream()
                 .filter(connection -> connection.sourceCanvasItemId().equals(canvasItemId)
                         || connection.targetCanvasItemId().equals(canvasItemId))

@@ -4,12 +4,13 @@ import { configDefaults, defineConfig } from "vitest/config";
 import { fileURLToPath, URL } from "node:url";
 import { videoEditMediaPreview } from "./e2e/video-edit-media";
 import { settingsDesignMediaPreview } from "./e2e/settings-design-media";
+import { imageStudioMediaPreview } from "./e2e/image-studio-media";
 
 export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   // Serve-only fixture middleware isolates native synthetic media requests before /api proxying.
   // Its bytes and middleware are absent from the production client build.
-  plugins: [videoEditMediaPreview(), settingsDesignMediaPreview(), react(), tailwindcss()],
+  plugins: [videoEditMediaPreview(), settingsDesignMediaPreview(), imageStudioMediaPreview(), react(), tailwindcss()],
   server: {
     port: 5173,
     proxy: {

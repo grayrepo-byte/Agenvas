@@ -222,6 +222,16 @@ public class ConfiguredAssetStorage implements AssetStorage {
         Remote r = remote(key);
         cloud.verify(r.profile(), remoteKey(r.profile(), r.key()), size, hash);
     }
+
+    @Override
+    public void verifyRecoveredArchive(String key, long size, String hash) {
+        if (!key.startsWith(REMOTE_PREFIX))
+            return; // recover() already hashed the installed local file.
+        Remote r = remote(key);
+        if (!cloud.matches(r.profile(), remoteKey(r.profile(), r.key()), size, hash))
+            throw new IllegalStateException("Recovered archive object is missing");
+    }
+
     private void verifyLocal(String key, long size, String hash) {
         verifyCache(local.checkedPath(key), size, hash);
     }

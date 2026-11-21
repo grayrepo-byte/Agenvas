@@ -80,6 +80,7 @@ public class CanvasCopySupport {
      */
     @Transactional(readOnly = true)
     public JsonNode capture(UUID owner, UUID project, CanvasItem requested) {
+        projects.requireCanvasProject(owner, project);
         CanvasItem item = items.requireItem(owner, project, requested.id());
         if (item.subjectType() == CanvasItem.SubjectType.CHARACTER)
             return characterNodes.getObject().copyGuard(owner, project, item);
@@ -119,6 +120,7 @@ public class CanvasCopySupport {
     @Transactional(propagation = Propagation.MANDATORY)
     public PreparedCopy prepareCloneWithinChange(UUID owner, UUID project, CanvasItem requested, UUID targetId,
             Map<UUID, UUID> copiedConnectionIds, Set<UUID> copiedCharacterIds) {
+        projects.requireCanvasProject(owner, project);
         projects.requireActiveProject(owner, project);
         CanvasItem source = items.requireItem(owner, project, requested.id());
         if (source.subjectType() == CanvasItem.SubjectType.CHARACTER) {
@@ -198,6 +200,7 @@ public class CanvasCopySupport {
     @Transactional(propagation = Propagation.MANDATORY)
     public void restoreWithinChange(UUID owner, UUID project, CanvasItem target, JsonNode frozen,
             JsonNode previousGuard) {
+        projects.requireCanvasProject(owner, project);
         projects.requireActiveProject(owner, project);
         validateSnapshot(target, frozen);
         if (target.subjectType() == CanvasItem.SubjectType.CHARACTER) {

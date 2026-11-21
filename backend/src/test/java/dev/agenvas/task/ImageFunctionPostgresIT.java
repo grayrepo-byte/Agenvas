@@ -350,7 +350,7 @@ class ImageFunctionPostgresIT {
         var connection = capabilities.createConnection(UUID.randomUUID().toString(),
                 "Synthetic smart editing", "OPENAI", null, "synthetic-smart-edit-key");
         var capability = capabilities.publishCapability(connection.id(), "Synthetic smart edit",
-                "OPENAI_GPT_IMAGE_2", mapper.createObjectNode());
+                "OPENAI_GPT_IMAGE_2", mapper.createObjectNode().put("quality", "low"));
         var previous = setting(MediaFunction.IMAGE_SMART_EDIT);
         functions.update(MediaFunction.IMAGE_SMART_EDIT, previous.version(), capability.id());
         long functionVersion = previous.version() + 1;
@@ -388,7 +388,7 @@ class ImageFunctionPostgresIT {
                     "renderedPrompt", "parameters", "capabilityId", "capabilityVersion", "images", "audios",
                     "mentions");
             assertThat(mediaInput.path("parameters")).isEqualTo(mapper.readTree("""
-                    {"aspectRatio":"1:1","resolution":"1K","quality":"high",
+                    {"aspectRatio":"1:1","resolution":"1K","quality":"low",
                      "transparentBackground":false,"generationCount":1}
                     """));
             var images = mediaInput.path("images");

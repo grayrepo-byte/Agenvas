@@ -1,10 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { applyCanvasCommands, type Canvas, type CanvasItem } from "../../shared/api/client";
+import { type Canvas, type CanvasItem } from "../../shared/api/client";
 import { t, useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import { Input } from "../../shared/ui/primitives/input";
 import { canvasItemPresentation, useCanvasEditingExecutor } from "./useCanvasEditing";
+import { saveCanvasCommands } from "./canvasAcknowledgement";
 
 const MAX_TITLE_LENGTH = 160;
 const MIN_INPUT_CHARS = 8;
@@ -42,15 +43,6 @@ export function CanvasItemTitleEditor({
       setDraft(updated.title);
       setEditing(false);
     }
-    queryClient.setQueryData<Canvas>(["canvas", projectId], current => {
-      const cached = new Map(current?.items.map(candidate => [candidate.id, candidate]) ?? []);
-      return {
-        items: canvas.items.map(candidate => {
-          const newer = cached.get(candidate.id);
-          return newer && newer.version > candidate.version ? newer : candidate;
-        }),
-      };
-    });
     void queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
   }
   const save = useMutation({
@@ -63,7 +55,7 @@ export function CanvasItemTitleEditor({
             },
             accepted => acceptTitle(accepted, title),
           )
-        : await applyCanvasCommands(projectId, [
+        : await saveCanvasCommands(queryClient, projectId, [
             {
               type: "UPDATE_TITLE",
               itemId: item.id,

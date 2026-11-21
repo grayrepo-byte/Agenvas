@@ -45,6 +45,7 @@ import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.application.TaskProperties;
+import dev.agenvas.shared.lifecycle.ShutdownGate;
 import dev.agenvas.task.application.TaskRecoveryScheduler;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.application.DirectMediaTaskService;
@@ -1815,8 +1816,8 @@ class AgentMediaApprovalPostgresIT {
         }
         /** The production recovery scheduler has no enable switch; keep this test's recovery explicit. */
         @Bean(name = "taskRecoveryScheduler")
-        TaskRecoveryScheduler disabledRecovery(TaskService tasks, TaskProperties properties) {
-            return new TaskRecoveryScheduler(tasks, properties) {
+        TaskRecoveryScheduler disabledRecovery(TaskService tasks, TaskProperties properties, ShutdownGate shutdown) {
+            return new TaskRecoveryScheduler(tasks, properties, shutdown) {
                 @Override
                 public void scan() {
                 }

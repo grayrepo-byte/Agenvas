@@ -55,7 +55,7 @@ public class CanvasSubgraphCopySupport {
 
     @Transactional(readOnly = true)
     public Graph current(UUID owner, UUID project) {
-        projects.get(owner, project);
+        projects.requireCanvasProject(owner, project);
         return new Graph(connections.list(owner, project), characters.connections(project));
     }
 
@@ -90,6 +90,7 @@ public class CanvasSubgraphCopySupport {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public Graph remap(UUID owner, UUID project, Prepared prepared, Map<UUID, CanvasItem> targets) {
+        projects.requireCanvasProject(owner, project);
         List<CanvasConnection> edges = new ArrayList<>();
         var now = clock.instant();
         // Preserve source prompt order even when original timestamps tie: UUIDs change on copy.
@@ -114,6 +115,7 @@ public class CanvasSubgraphCopySupport {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void install(UUID owner, UUID project, Graph graph) {
+        projects.requireCanvasProject(owner, project);
         projects.requireActiveProject(owner, project);
         try {
             for (var edge : graph.connections())

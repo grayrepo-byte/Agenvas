@@ -14,6 +14,9 @@ const SkillsPage = lazy(() => import("../features/skills/SkillsPage").then(modul
 const LibraryPage = lazy(() =>
   import("../features/library/LibraryPage").then(module => ({ default: module.LibraryPage })),
 );
+const ImageStudioPage = lazy(() =>
+  import("../features/image-studio/ImageStudioPage").then(module => ({ default: module.ImageStudioPage })),
+);
 const ProjectsPage = lazy(() =>
   import("../features/projects/ProjectsPage").then(module => ({ default: module.ProjectsPage })),
 );
@@ -89,6 +92,7 @@ function AppRoutes() {
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/image-studio" element={<ImageStudioPage />} />
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/skills" element={<SkillsPage />} />
           <Route path="/settings/llm" element={<LlmSettingsPage />} />

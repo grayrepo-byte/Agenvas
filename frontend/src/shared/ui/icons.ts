@@ -1,5 +1,6 @@
 /** Import only used CSR icons so TypeScript and Vite do not load the full Phosphor catalog. */
 export { AlignLeftSimple } from "@phosphor-icons/react/dist/csr/AlignLeftSimple";
+export { Aperture } from "@phosphor-icons/react/dist/csr/Aperture";
 export { Archive } from "@phosphor-icons/react/dist/csr/Archive";
 export { ArrowClockwise } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
 export { ArrowCounterClockwise } from "@phosphor-icons/react/dist/csr/ArrowCounterClockwise";

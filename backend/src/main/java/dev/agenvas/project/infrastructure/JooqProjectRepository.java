@@ -5,6 +5,7 @@ import static dev.agenvas.db.Tables.PROJECT;
 import dev.agenvas.db.tables.records.ProjectRecord;
 import dev.agenvas.project.application.ProjectRepository;
 import dev.agenvas.project.domain.Project;
+import dev.agenvas.project.domain.ProjectPurpose;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -42,6 +43,36 @@ public class JooqProjectRepository implements ProjectRepository {
                 // 新建项目必定未归档；显式写入 NULL 与原插入语句的列集合保持一致。
                 .set(PROJECT.ARCHIVED_AT, (OffsetDateTime) null)
                 .execute();
+    }
+
+    @Override
+    public Project ensureImageStudioScope(Project candidate) {
+        dsl.insertInto(PROJECT)
+                .set(PROJECT.ID, candidate.id())
+                .set(PROJECT.OWNER_ID, candidate.ownerId())
+                .set(PROJECT.NAME, candidate.name())
+                .set(PROJECT.ASPECT_RATIO, candidate.aspectRatio().name())
+                .set(PROJECT.STATUS, candidate.status().name())
+                .set(PROJECT.PURPOSE, ProjectPurpose.IMAGE_STUDIO.name())
+                .set(PROJECT.EVENT_SEQ, 0L)
+                .set(PROJECT.VERSION, 0L)
+                .set(PROJECT.CREATED_AT, atUtc(candidate.createdAt()))
+                .set(PROJECT.UPDATED_AT, atUtc(candidate.updatedAt()))
+                .onConflictDoNothing()
+                .execute();
+        // The partial unique index waits for a concurrent insertion to commit. This
+        // next READ COMMITTED statement then sees that same winner, including on first entry.
+        return dsl.selectFrom(PROJECT)
+                .where(PROJECT.OWNER_ID.eq(candidate.ownerId()))
+                .and(PROJECT.PURPOSE.eq(ProjectPurpose.IMAGE_STUDIO.name()))
+                .fetchSingle(this::map);
+    }
+
+    @Override
+    public boolean isCanvasScope(UUID ownerId, UUID projectId) {
+        return dsl.fetchExists(dsl.selectOne().from(PROJECT)
+                .where(PROJECT.ID.eq(projectId)).and(PROJECT.OWNER_ID.eq(ownerId))
+                .and(PROJECT.PURPOSE.eq(ProjectPurpose.CANVAS.name())));
     }
 
     /** 仅按项目 ID 与所有者 ID 读取项目，避免跨用户查询。 */
@@ -116,6 +147,7 @@ public class JooqProjectRepository implements ProjectRepository {
             int limit) {
         var query = dsl.selectFrom(PROJECT)
                 .where(PROJECT.OWNER_ID.eq(ownerId))
+                .and(PROJECT.PURPOSE.eq(ProjectPurpose.CANVAS.name()))
                 .and(PROJECT.STATUS.ne(Project.Status.DELETED.name()));
         if (!includeArchived) {
             query = query.and(PROJECT.STATUS.eq(Project.Status.ACTIVE.name()));
