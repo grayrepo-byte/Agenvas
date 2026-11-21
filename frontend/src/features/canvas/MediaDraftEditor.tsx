@@ -115,6 +115,7 @@ import {
   VIDEO_ASPECT_RATIO_OPTIONS,
   RESOLUTION_OPTIONS,
   QUALITY_OPTIONS,
+  QUALITY_LABELS,
   GENERATION_COUNT_OPTIONS,
   normalizedImageParameters,
   normalizedVideoParameters,
@@ -170,23 +171,6 @@ const QUEUE_LABELS = {
   },
   get NOT_QUEUED() {
     return t("media.editor.notQueued");
-  },
-} as const;
-const QUALITY_LABELS = {
-  get low() {
-    return t("media.editor.lowQuality");
-  },
-  get medium() {
-    return t("media.editor.mediumQuality");
-  },
-  get high() {
-    return t("media.editor.highQuality");
-  },
-  get xhigh() {
-    return "xhigh";
-  },
-  get max() {
-    return "max";
   },
 } as const;
 const ASPECT_RATIO_LABELS: Readonly<Record<(typeof ASPECT_RATIO_OPTIONS)[number], string>> = {

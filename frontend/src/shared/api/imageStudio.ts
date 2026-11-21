@@ -14,6 +14,7 @@ export const IMAGE_STUDIO_COUNTS = [1, 2, 4] as const;
 export const IMAGE_STUDIO_POLL_MS = 1_500;
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const BASE = "/api/v1/image-studio";
+const ACTIVE_STATUSES = new Set<ImageStudioTask["status"]>(["READY", "RUNNING", "SUBMITTING", "WAITING_PROVIDER"]);
 
 export function getImageStudioContext(): Promise<ImageStudioContext> {
   return readJson(`${BASE}/context`, t("imageStudio.loadFailed"));
@@ -50,5 +51,8 @@ export function uploadImageStudioReference(file: File): Promise<ImageStudioRefer
 }
 /** Uncertain and blocked tasks require an explicit user decision; polling never resubmits. */
 export function imageStudioBatchActive(batch: ImageStudioBatch): boolean {
-  return batch.tasks.some(task => ["READY", "RUNNING", "SUBMITTING", "WAITING_PROVIDER"].includes(task.status));
+  return batch.tasks.some(imageStudioTaskActive);
+}
+export function imageStudioTaskActive(task: ImageStudioTask): boolean {
+  return ACTIVE_STATUSES.has(task.status);
 }

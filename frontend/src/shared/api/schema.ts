@@ -8092,6 +8092,16 @@ export interface components {
             parameters: components["schemas"]["ImageOperationParameters"];
         };
         ImageOperationParameters: {
+            /**
+             * @description Optional for OpenAI and Google image edits. Omission uses the bound capability version's default resolution, falling back to 1K.
+             * @enum {string}
+             */
+            resolution?: "1K" | "2K" | "4K";
+            /**
+             * @description Optional for OpenAI image edits. The value must be among the bound capability's supportedImageQualities. Omission uses the capability's default quality.
+             * @enum {string}
+             */
+            quality?: "low" | "medium" | "high" | "xhigh" | "max";
             dynamicValues?: {
                 [key: string]: string | number | boolean;
             };

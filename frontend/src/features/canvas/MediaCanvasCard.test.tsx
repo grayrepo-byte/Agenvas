@@ -1564,7 +1564,8 @@ describe("MediaCanvasCard", () => {
     );
   });
 
-  it("chooses a dedicated three-view type and freezes it into the task", async () => {
+  it.each(["OPENAI", "GOOGLE"] as const)("submits %s three-view output settings", async platform => {
+    const openAi = platform === "OPENAI";
     let request: unknown;
     server.use(
       http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () =>
@@ -1589,21 +1590,23 @@ describe("MediaCanvasCard", () => {
         HttpResponse.json({
           connections: [
             {
-              id: "openai",
+              id: "image-provider",
               enabled: true,
-              platform: "OPENAI",
+              platform,
               capabilities: [
                 {
                   id: "three-view-capability",
-                  name: "GPT Image",
+                  name: "Image editor",
                   enabled: true,
-                  adapterId: "OPENAI_GPT_IMAGE_2",
+                  adapterId: openAi ? "OPENAI_GPT_IMAGE_2" : "GOOGLE_NANO_BANANA_2",
                   capabilityVersion: 1,
-                  settings: {},
+                  settings: { defaultParameters: { resolution: "4K", ...(openAi && { quality: "low" }) } },
                   kind: "IMAGE_GENERATION",
                   maxReferenceImages: 1,
-                  supportsTransparentBackground: true,
-                  supportsImageMask: true,
+                  supportedImageResolutions: ["1K", "2K", "4K"],
+                  supportedImageQualities: openAi ? ["low", "medium", "high"] : [],
+                  supportsTransparentBackground: openAi,
+                  supportsImageMask: openAi,
                 },
               ],
             },
@@ -1648,6 +1651,17 @@ describe("MediaCanvasCard", () => {
     await clickControl(screen.getByRole("menuitem", { name: /脸部三视图/ }));
     expect(screen.getByRole("dialog", { name: "脸部三视图" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /脸部三视图/ })).toBeChecked();
+    const resolution = screen.getByRole("combobox", { name: "分辨率" });
+    expect(resolution).toHaveTextContent("4K");
+    await selectValue(resolution, "2K");
+    if (openAi) {
+      const quality = screen.getByRole("combobox", { name: "画质" });
+      expect(quality).toHaveTextContent("低");
+      await selectValue(quality, "high");
+    } else {
+      expect(screen.queryByRole("combobox", { name: "画质" })).not.toBeInTheDocument();
+      await selectValue(resolution, "");
+    }
     await changeControl(screen.getByRole("textbox", { name: "主体说明（可选）" }), {
       target: { value: "保留发饰和妆容" },
     });
@@ -1662,7 +1676,11 @@ describe("MediaCanvasCard", () => {
           expectedFunctionVersion: 3,
           expectedCapabilityVersion: 1,
           instruction: "保留发饰和妆容",
-          parameters: { aspectRatio: "16:9", threeViewType: "FACE" },
+          parameters: {
+            aspectRatio: "16:9",
+            threeViewType: "FACE",
+            ...(openAi && { resolution: "2K", quality: "high" }),
+          },
         }),
       ),
     );

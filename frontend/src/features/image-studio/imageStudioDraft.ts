@@ -14,6 +14,7 @@ export type StudioDraft = {
   selectedVersions: Record<string, string>;
   awaitingHistory: string[];
   command: StudioCommand | null;
+  viewingSubmission: boolean;
 };
 const emptyDraft = (): StudioDraft => ({
   prompt: "",
@@ -25,6 +26,7 @@ const emptyDraft = (): StudioDraft => ({
   selectedVersions: {},
   awaitingHistory: [],
   command: null,
+  viewingSubmission: false,
 });
 const EMPTY_DRAFT = emptyDraft();
 type DraftStore = {

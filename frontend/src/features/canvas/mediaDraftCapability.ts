@@ -8,6 +8,7 @@ import { MINIMAX_H3_ADAPTER, MINIMAX_H3_RESOLUTIONS, MINIMAX_H3_DEFAULT_RESOLUTI
 import { KLING_VIDEO_ADAPTER, KLING_VIDEO_RESOLUTIONS, KLING_VIDEO_DEFAULT_RESOLUTION } from "../../shared/kling";
 import { AUTODL_ADAPTER, publishedAutoDlResolutions, resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
 import { creatorInputMapping } from "../../shared/creatorInputs";
+import { t } from "../../shared/i18n";
 import { nativeVersionAssignable } from "../../shared/nativeMedia";
 import { isWorkflowMediaField, type WorkflowValue } from "./workflowFields";
 import { promptForMediaInputs } from "./mediaPrompt";
@@ -17,6 +18,19 @@ export const ASPECT_RATIO_OPTIONS = ["1:1", "2:3", "3:2", "9:16", "16:9", "3:4",
 export const VIDEO_ASPECT_RATIO_OPTIONS = ["AUTO", "16:9", "9:16", "1:1"] as const;
 export const RESOLUTION_OPTIONS = ["1K", "2K", "4K"] as const;
 export const QUALITY_OPTIONS = ["low", "medium", "high", "xhigh", "max"] as const;
+export const QUALITY_LABELS = {
+  get low() {
+    return t("media.editor.lowQuality");
+  },
+  get medium() {
+    return t("media.editor.mediumQuality");
+  },
+  get high() {
+    return t("media.editor.highQuality");
+  },
+  xhigh: "xhigh",
+  max: "max",
+} as const;
 export const GENERATION_COUNT_OPTIONS = [1, 2, 4] as const;
 const START_END_FRAME_COUNT = 2;
 

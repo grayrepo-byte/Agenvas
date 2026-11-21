@@ -136,6 +136,7 @@ const unexpected: string[] = [];
 let uploads = 0;
 let failAcceptance = !parameters.has("ok");
 let batch: ImageStudioBatch | undefined;
+let acknowledge: (() => void) | undefined;
 let leading = false;
 window.fetch = async (input, init) => {
   const url = new URL(
@@ -169,15 +170,22 @@ window.fetch = async (input, init) => {
         { status: 503 },
       );
     }
+    if (scenario === "feedback")
+      await new Promise<void>(resolve => {
+        acknowledge = resolve;
+      });
     batch = {
       ...saved,
-      id: "synthetic-new-batch",
+      id: "5ba708e3-0000-4000-8000-000000000001",
       tasks: Array.from({ length: request.parameters.generationCount ?? 1 }, (_, index) => ({
         id: `synthetic-new-task-${index}`,
-        status: "SUCCEEDED",
+        status: scenario === "feedback" ? "READY" : "SUCCEEDED",
         version: 4,
         errorCode: null,
-        results: [{ ...fixtureResult(index), artifactVersionId: `synthetic-new-version-${index}` }],
+        results:
+          scenario === "feedback"
+            ? []
+            : [{ ...fixtureResult(index), artifactVersionId: `synthetic-new-version-${index}` }],
       })),
       prompt: request.prompt,
       parameters: request.parameters,
@@ -202,7 +210,7 @@ window.fetch = async (input, init) => {
       ],
       nextCursor: null,
     });
-  if (url.pathname === "/api/v1/image-studio/batches/synthetic-new-batch" && batch) return Response.json(batch);
+  if (batch && url.pathname === `/api/v1/image-studio/batches/${batch.id}`) return Response.json(batch);
   if (url.pathname === "/api/v1/image-studio/batches/synthetic-saved-batch") return Response.json(saved);
   if (url.pathname === "/api/v1/image-studio/batches/synthetic-pending-batch") return Response.json(pendingBatch);
   if (url.pathname === "/api/v1/image-studio/batches/synthetic-partial-batch") return Response.json(partialBatch);
@@ -216,6 +224,27 @@ window.fetch = async (input, init) => {
 Object.assign(window, {
   __imageStudio: {
     evidence: () => ({ writes, uploads, unexpected }),
+    acknowledge: () => acknowledge?.(),
+    startGeneration: () => {
+      if (batch)
+        batch.tasks = batch.tasks.map(task =>
+          task.status === "READY" ? { ...task, status: "WAITING_PROVIDER", version: task.version + 1 } : task,
+        );
+    },
+    finishNextOutput: () => {
+      if (!batch) return;
+      const next = batch.tasks.findLastIndex(task => task.status !== "SUCCEEDED");
+      batch.tasks = batch.tasks.map((task, index) => {
+        if (task.status === "SUCCEEDED") return task;
+        if (index !== next) return { ...task, status: "WAITING_PROVIDER", version: task.version + 1 };
+        return {
+          ...task,
+          status: "SUCCEEDED",
+          version: task.version + 1,
+          results: [{ ...fixtureResult(index), artifactVersionId: `synthetic-new-version-${index}` }],
+        };
+      });
+    },
     finishAndLead: () => {
       saved.tasks = saved.tasks
         .map((task, index) =>

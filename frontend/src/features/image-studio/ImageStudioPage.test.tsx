@@ -78,9 +78,9 @@ beforeEach(() => {
     http.get("/api/v1/image-studio/batches", () => HttpResponse.json({ items: [], nextCursor: null })),
   );
 });
-function show(path = "/image-studio") {
+function show(path = "/image-studio", client = createQueryClient()) {
   return render(
-    <QueryClientProvider client={createQueryClient()}>
+    <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/image-studio" element={<ImageStudioPage />} />
@@ -89,6 +89,135 @@ function show(path = "/image-studio") {
     </QueryClientProvider>,
   );
 }
+
+it("replaces the previous photo on submit and fills numbered slots as individual results arrive", async () => {
+  const task = (id: string, status: string, results: (typeof result)[] = []) => ({
+    id,
+    status,
+    results,
+    version: 1,
+    errorCode: null,
+  });
+  const queued = {
+    ...history,
+    id: "42ac09de-new",
+    prompt: "暮色中的海岸线",
+    tasks: [task("first", "READY"), task("second", "READY")],
+  };
+  let detail = queued;
+  let release!: () => void;
+  const receipt = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  let writes = 0;
+  server.use(
+    http.get("/api/v1/image-studio/batches", () => HttpResponse.json({ items: [history], nextCursor: null })),
+    http.post("/api/v1/image-studio/batches", async () => {
+      writes++;
+      await receipt;
+      return HttpResponse.json(queued);
+    }),
+    http.get("/api/v1/image-studio/batches/42ac09de-new", () => HttpResponse.json(detail)),
+  );
+  const user = userEvent.setup();
+  show();
+  const stage = within(await screen.findByRole("region", { name: "生成结果" }));
+  await stage.findByRole("img", { name: "生成图片 1" });
+  await user.type(screen.getByRole("textbox", { name: "提示词" }), queued.prompt);
+  await user.click(screen.getByRole("combobox", { name: "数量" }));
+  await user.click(screen.getByRole("option", { name: "2 张" }));
+  try {
+    await user.click(screen.getByRole("button", { name: "生成图片" }));
+    expect(await stage.findByRole("heading", { name: "正在提交生图请求" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "受理中…" })).toBeDisabled();
+    expect(stage.queryByRole("link")).not.toBeInTheDocument();
+    expect(stage.queryByText(/批次 #/)).not.toBeInTheDocument();
+    for (const index of [1, 2]) {
+      expect(stage.getByRole("img", { name: `图片 ${index} · 正在提交生图请求` })).toHaveTextContent(`0${index}`);
+    }
+  } finally {
+    release();
+  }
+  expect(await stage.findByRole("heading", { name: "排队中" })).toBeVisible();
+  expect(stage.getByText("批次 #42AC09DE")).toBeVisible();
+  expect(stage.getByRole("status")).toHaveTextContent("已出图 0 / 2");
+  const later = { ...result, artifactVersionId: "second-version", assetId: "second-asset" };
+  detail = { ...queued, tasks: [task("first", "WAITING_PROVIDER"), task("second", "SUCCEEDED", [later])] };
+  await user.click(screen.getByRole("button", { name: "刷新工作台" }));
+  const variant = await stage.findByRole("button", { name: "选择变体 2" });
+  expect(variant).toHaveTextContent("02");
+  expect(stage.getByRole("img", { name: "图片 1 · 生成中" })).toBeVisible();
+  expect(stage.getByRole("status")).toHaveTextContent("已出图 1 / 2");
+  expect(stage.getByRole("link", { name: "下载图片 2" })).toHaveAttribute("download", "image-2.png");
+  const extra = { ...result, artifactVersionId: "native-extra", assetId: "extra-asset" };
+  detail = { ...queued, tasks: [task("first", "SUCCEEDED", [result, extra]), detail.tasks[1]!] };
+  await user.click(screen.getByRole("button", { name: "刷新工作台" }));
+  expect(await stage.findByRole("button", { name: "选择变体 3" })).toHaveTextContent("03");
+  expect(variant).toHaveAttribute("aria-pressed", "true");
+  expect(stage.getByRole("status")).toHaveTextContent("已出图 3 / 3");
+  expect(writes).toBe(1);
+});
+
+it("respects a history choice made while the new request is awaiting its receipt", async () => {
+  const accepted = { ...history, id: "new", prompt: "新批次" };
+  let release!: () => void;
+  const receipt = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  server.use(
+    http.get("/api/v1/image-studio/batches", () => HttpResponse.json({ items: [history], nextCursor: null })),
+    http.post("/api/v1/image-studio/batches", async () => {
+      await receipt;
+      return HttpResponse.json(accepted);
+    }),
+  );
+  show();
+  const user = userEvent.setup();
+  const previous = await screen.findByRole("button", { name: /清晨的海边小屋/ });
+  await user.type(screen.getByRole("textbox", { name: "提示词" }), accepted.prompt);
+  try {
+    await user.click(screen.getByRole("button", { name: "生成图片" }));
+    await screen.findByRole("heading", { name: "正在提交生图请求" });
+    expect(previous).toHaveAttribute("aria-pressed", "false");
+    await user.click(previous);
+    expect(await screen.findByRole("link", { name: "下载图片 1" })).toBeVisible();
+  } finally {
+    release();
+  }
+  expect(await screen.findByRole("button", { name: /新批次/ })).toHaveAttribute("aria-pressed", "false");
+  expect(previous).toHaveAttribute("aria-pressed", "true");
+});
+
+it("keeps a pending submission visible after leaving the route and coming back", async () => {
+  let release!: () => void;
+  const receipt = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  let writes = 0;
+  server.use(
+    http.post("/api/v1/image-studio/batches", async () => {
+      writes++;
+      await receipt;
+      return HttpResponse.json(history);
+    }),
+  );
+  const client = createQueryClient();
+  const firstVisit = show("/image-studio", client);
+  const user = userEvent.setup();
+  await user.type(await screen.findByRole("textbox", { name: "提示词" }), "往返时保留这次请求");
+  try {
+    await user.click(screen.getByRole("button", { name: "生成图片" }));
+    await screen.findByRole("heading", { name: "正在提交生图请求" });
+    firstVisit.unmount();
+    show("/image-studio", client);
+    expect(await screen.findByRole("heading", { name: "正在提交生图请求" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "重试受理" })).not.toBeInTheDocument();
+  } finally {
+    release();
+  }
+  expect(await screen.findByRole("link", { name: "下载图片 1" })).toBeVisible();
+  expect(writes).toBe(1);
+});
 
 it("opens from main navigation without reading or choosing a canvas", async () => {
   show();
@@ -179,6 +308,8 @@ it("retries uncertain acceptance with its frozen request and idempotency key", a
   await user.type(await screen.findByRole("textbox", { name: "提示词" }), "保留这份受理命令");
   await waitFor(() => expect(screen.getByRole("button", { name: "生成图片" })).toBeEnabled());
   await user.click(screen.getByRole("button", { name: "生成图片" }));
+  const unconfirmed = await screen.findByRole("heading", { name: "尚未确认受理" });
+  expect(unconfirmed.closest(".image-studio-generation-frame")).toHaveAttribute("data-tone", "warning");
   await user.click(await screen.findByRole("button", { name: "重试受理" }));
   await screen.findByRole("link", { name: "下载图片 1" });
   expect(accepted).toHaveLength(2);
@@ -223,7 +354,29 @@ it("shows UNKNOWN without automatically creating another attempt", async () => {
   show();
   await userEvent.setup().click(await screen.findByRole("button", { name: /清晨的海边小屋/ }));
   expect(await screen.findByText(/供应商是否受理尚不确定/)).toBeInTheDocument();
+  expect(
+    screen.getByRole("heading", { name: "受理状态未知" }).closest(".image-studio-generation-frame"),
+  ).toHaveAttribute("data-tone", "warning");
   expect(writes).toBe(0);
+});
+
+it.each([
+  ["FAILED", "生成失败", "danger"],
+  ["CANCELED", "已取消", "idle"],
+])("stops the waiting frame for a %s batch with no image", async (status, label, tone) => {
+  server.use(
+    http.get("/api/v1/image-studio/batches", () =>
+      HttpResponse.json({
+        items: [{ ...history, tasks: [{ id: "stopped", status, version: 2, errorCode: null, results: [] }] }],
+        nextCursor: null,
+      }),
+    ),
+  );
+  show();
+  const frame = (await screen.findByRole("heading", { name: label })).closest(".image-studio-generation-frame");
+  expect(frame).toHaveAttribute("data-tone", tone);
+  expect(screen.getByRole("img", { name: `图片 1 · ${label}` })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "放大图片" })).not.toBeInTheDocument();
 });
 
 it("keeps the prompt when capabilities cannot load and offers a read retry", async () => {
@@ -538,7 +691,8 @@ it("keeps the active version after a reordered detail read and across history br
   );
   show();
   const user = userEvent.setup();
-  const select = () => screen.getByRole("button", { name: "选择变体 2" });
+  // The failed second task retains slot 2. Extra native results follow the requested slots.
+  const select = () => screen.getByRole("button", { name: "选择变体 3" });
   const hero = () => screen.getByRole("img", { name: /生成图片/ });
   const historyItem = () => screen.getByRole("button", { name: /清晨的海边小屋/ });
   const prompt = await screen.findByRole("textbox", { name: "提示词" });
@@ -550,12 +704,12 @@ it("keeps the active version after a reordered detail read and across history br
   latestFirst = true;
   detail = withResults([third, result, second]);
   await user.click(screen.getByRole("button", { name: "刷新工作台" }));
-  expect(await screen.findByRole("button", { name: "选择变体 3" })).toHaveAttribute("aria-pressed", "true");
+  expect(await screen.findByRole("button", { name: "选择变体 4" })).toHaveAttribute("aria-pressed", "true");
   expect(hero()).toHaveAttribute("src", expect.stringContaining("/second/content"));
   expect(historyItem().querySelector("img")).toHaveAttribute("src", expect.stringContaining("/second/thumbnail"));
   await user.click(screen.getByRole("button", { name: /另一批/ }));
   await user.click(historyItem());
-  expect(screen.getByRole("button", { name: "选择变体 3" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "选择变体 4" })).toHaveAttribute("aria-pressed", "true");
   expect(prompt).toHaveValue("未提交的新描述");
   expect(screen.getByText("PROVIDER_REJECTED")).toBeVisible();
   await user.click(screen.getByRole("button", { name: "回填参数" }));

@@ -235,8 +235,62 @@ try {
       );
       assert.equal((await page(() => window.__imageStudio.evidence())).writes.length, 0);
     }
+    await navigate("feedback", "zh", "ok=1");
+    await imageReady(4);
+    await click(".image-studio-restore");
+    await click(".image-studio-generate");
+    await waitFor(
+      () => document.querySelector(".image-studio-generation-frame h2")?.textContent === "正在提交生图请求",
+    );
+    assert.deepEqual(
+      await page(() => [...document.querySelectorAll(".image-studio-slot-number")].map(e => e.innerText)),
+      ["01", "02", "03", "04"],
+    );
+    assert.equal(await page(() => !!document.querySelector(".image-studio-image-button")), false);
+    const frame = await page(() => {
+      const frame = document.querySelector(".image-studio-generation-frame");
+      const r = frame.getBoundingClientRect();
+      const title = frame.querySelector("h2").getBoundingClientRect();
+      return {
+        width: r.width,
+        height: r.height,
+        titleFits: title.left >= r.left && title.right <= r.right && title.top >= r.top && title.bottom <= r.bottom,
+        scan: getComputedStyle(frame, "::before").animationName,
+        overflow: document.documentElement.scrollWidth > innerWidth,
+      };
+    });
+    assert.ok(frame.width >= 150 && frame.height >= 70 && frame.titleFits && !frame.overflow, JSON.stringify(frame));
+    assert.equal(frame.scan, "image-studio-scan");
+    await cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+    await waitFor(
+      () =>
+        getComputedStyle(document.querySelector(".image-studio-generation-frame"), "::before").animationName === "none",
+    );
+    assert.equal(
+      await page(() => getComputedStyle(document.querySelector(".image-studio-iris"), "::after").animationName),
+      "none",
+    );
+    assert.equal(
+      await page(() => getComputedStyle(document.querySelector(".image-studio-generate svg")).animationName),
+      "none",
+    );
+    await page(() => window.__imageStudio.acknowledge());
+    await waitFor(() => document.querySelector(".image-studio-generation-frame h2")?.textContent === "排队中");
+    await page(() => window.__imageStudio.startGeneration());
+    await waitFor(() => document.querySelector(".image-studio-generation-frame h2")?.textContent === "生成中");
+    await page(() => window.__imageStudio.finishNextOutput());
+    await imageReady(1);
+    await waitFor(() => document.querySelector(".image-studio-photo img")?.dataset.loaded === "true");
+    assert.equal(await page(() => document.querySelector(".image-studio-photo-index").innerText), "04 / 04");
+    assert.match(
+      await page(() => document.querySelector(".image-studio-gallery-summary").textContent),
+      /已出图 1 \/ 4/,
+    );
+    assert.equal(await page(() => document.querySelectorAll(".image-studio-slot").length), 3);
+    assert.equal((await page(() => window.__imageStudio.evidence())).writes.length, 1);
+    await cdp("Emulation.setEmulatedMedia", { features: [] });
     console.log(
-      `Dark Studio viewport passed: ${viewport.width}×${viewport.height} × four languages + portrait/landscape`,
+      `Dark Studio viewport passed: ${viewport.width}×${viewport.height} × four languages, aspect ratios, submission motion and reduced motion`,
     );
   }
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1487, height: 1058, deviceScaleFactor: 1, mobile: false });

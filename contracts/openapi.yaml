@@ -11662,6 +11662,14 @@ components:
       type: object
       additionalProperties: false
       properties:
+        resolution:
+          type: string
+          enum: ["1K", "2K", "4K"]
+          description: "Optional for OpenAI and Google image edits. Omission uses the bound capability version's default resolution, falling back to 1K."
+        quality:
+          type: string
+          enum: [low, medium, high, xhigh, max]
+          description: "Optional for OpenAI image edits. The value must be among the bound capability's supportedImageQualities. Omission uses the capability's default quality."
         dynamicValues:
           type: object
           additionalProperties: {type: [string, number, boolean]}

@@ -1,5 +1,6 @@
 import {
   ArrowClockwise,
+  CircleNotch,
   ClockCounterClockwise,
   ImageSquare,
   Plus,
@@ -14,6 +15,7 @@ import {
 import {
   queryOptions,
   useInfiniteQuery,
+  useIsMutating,
   useMutation,
   useQueries,
   useQuery,
@@ -55,7 +57,8 @@ import {
   type StudioCommand,
   type StudioDraft,
 } from "./imageStudioDraft";
-import { batchStatus, studioGallery, StudioBatchResults, type StudioPreview } from "./StudioBatchResults";
+import { StudioBatchResults, type StudioResultsView } from "./StudioBatchResults";
+import { batchReference, batchStatus, studioGallery, type StudioPreview } from "./studioGallery";
 import "./ImageStudioPage.css";
 
 const QUALITY_LABELS: Record<string, MessageKey> = {
@@ -177,14 +180,21 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
         parameters: defaults(next),
       });
   }, [context.data, draft.capabilityId, ownerId]);
+  // The POST can outlive this route. Reopening the Studio should still show the in-flight request.
+  const acceptanceKey = ["image-studio", ownerId, "accept"] as const;
+  const accepting = useIsMutating({ mutationKey: acceptanceKey, exact: true }) > 0;
   const accept = useMutation({
+    mutationKey: acceptanceKey,
     mutationFn: createImageStudioBatch,
     onSuccess: batch => {
       queryClient.setQueryData(batchKey(ownerId, batch.id), batch);
-      const awaitingHistory = useImageStudioDraftStore.getState().owners[ownerId]?.awaitingHistory ?? [];
+      const current = useImageStudioDraftStore.getState().owners[ownerId];
+      const awaitingHistory = current?.awaitingHistory ?? [];
       update({
         command: null,
-        selectedBatchId: batch.id,
+        // Browsing a previous batch while the request is in flight takes precedence over its receipt.
+        selectedBatchId: current?.viewingSubmission ? batch.id : (current?.selectedBatchId ?? batch.id),
+        viewingSubmission: false,
         awaitingHistory: [batch.id, ...awaitingHistory.filter(id => id !== batch.id)],
       });
       void queryClient.invalidateQueries({ queryKey: historyKey(ownerId) });
@@ -198,7 +208,7 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
         error.status !== 408 &&
         error.status !== 429
       )
-        update({ command: null });
+        update({ command: null, viewingSubmission: false });
     },
     retry: false,
   });
@@ -230,7 +240,7 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
     !tooManyReferences &&
     !!draft.prompt.trim() &&
     !upload.isPending &&
-    !accept.isPending &&
+    !accepting &&
     !draft.command;
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -245,11 +255,11 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
         referenceVersionIds: draft.references.map(reference => reference.versionId),
       },
     };
-    update({ command });
+    update({ command, viewingSubmission: true });
     accept.mutate(command);
   }
   function chooseBatch(batch: ImageStudioBatch) {
-    update({ selectedBatchId: batch.id });
+    update({ selectedBatchId: batch.id, viewingSubmission: false });
   }
   function restoreBatch(batch: ImageStudioBatch) {
     update({
@@ -266,9 +276,26 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
   function updateParameters(patch: Partial<ImageStudioParameters>) {
     update({ parameters: { ...parameters, ...patch } });
   }
-  const locked = accept.isPending || !!draft.command;
+  const locked = accepting || !!draft.command;
   const batch = selected.data;
   const gallery = batch && studioGallery(batch, draft.selectedVersions[batch.id]);
+  const viewingSubmission = draft.viewingSubmission && !!draft.command;
+  const visibleBatchId = viewingSubmission ? undefined : batch?.id;
+  const visibleVersion = gallery?.active?.result.artifactVersionId;
+  useEffect(() => {
+    if (!visibleBatchId || !visibleVersion) return;
+    // Keep the first displayed photo in view when an earlier numbered output arrives later.
+    const store = useImageStudioDraftStore.getState();
+    const versions = store.owners[ownerId]?.selectedVersions;
+    if (!versions?.[visibleBatchId])
+      store.update(ownerId, { selectedVersions: { ...versions, [visibleBatchId]: visibleVersion } });
+  }, [ownerId, visibleBatchId, visibleVersion]);
+  const resultsView: StudioResultsView | undefined =
+    draft.command && viewingSubmission
+      ? { request: draft.command.request, pending: accepting }
+      : batch && gallery
+        ? { batch, gallery }
+        : undefined;
   const contextFailure = context.error ? (
     <Notice tone="danger" title={t("imageStudio.loadFailed")}>
       {errorText(context.error) !== t("imageStudio.loadFailed") ? <p>{errorText(context.error)}</p> : null}
@@ -307,16 +334,19 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
             key={row.id}
             data-batch-id={row.id}
             data-has-image={!!result}
-            aria-pressed={selectedId === row.id}
+            data-complete={status === "imageStudio.status.succeeded"}
+            aria-pressed={!viewingSubmission && selectedId === row.id}
             onClick={() => {
               chooseBatch(row);
               onChoose?.();
             }}
-            title={[row.prompt, date, status && t(status)].filter(Boolean).join(" · ")}
+            title={[batchReference(row.id), row.prompt, date, t(status)].join(" · ")}
           >
             <span className="image-studio-history-thumb">
               {result ? (
                 <img src={assetThumbnailUrl(row.projectId, result.assetId)} alt="" loading="lazy" />
+              ) : imageStudioBatchActive(row) ? (
+                <CircleNotch className="image-studio-spinner" size={24} aria-hidden="true" />
               ) : (
                 <ClockCounterClockwise size={24} aria-hidden="true" />
               )}
@@ -324,8 +354,9 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
             <span className="image-studio-history-caption">
               <strong>{row.prompt}</strong>
               <small>
+                <span className="image-studio-history-number">{batchReference(row.id)}</span>
                 <time dateTime={row.createdAt}>{date}</time>
-                {status ? <span>{t(status)}</span> : null}
+                <span>{t(status)}</span>
               </small>
             </span>
           </Button>
@@ -389,7 +420,7 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
       <div className="image-studio-workspace">
         <section className="image-studio-stage" aria-label={t("imageStudio.results")}>
           {narrow || !railOpen ? historyFeedback : null}
-          {selected.error ? (
+          {!viewingSubmission && selected.error ? (
             <Notice tone="danger" title={t("imageStudio.statusFailed")}>
               <p>{errorText(selected.error)}</p>
               <Button type="button" variant="outline" onClick={() => void selected.refetch()}>
@@ -397,10 +428,10 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
               </Button>
             </Notice>
           ) : null}
-          {!batch && selected.isFetching && !history.isLoading ? (
+          {!resultsView && selected.isFetching && !history.isLoading ? (
             <LoadingState label={t("imageStudio.loadingHistory")} />
           ) : null}
-          {!batch && !selected.error && !selected.isFetching && history.isSuccess ? (
+          {!resultsView && !selected.error && !selected.isFetching && history.isSuccess ? (
             <div className="image-studio-empty">
               <EmptyState
                 icon={<ImageSquare size={38} aria-hidden="true" />}
@@ -409,18 +440,17 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
               />
             </div>
           ) : null}
-          {batch && gallery ? (
+          {resultsView ? (
             <StudioBatchResults
-              batch={batch}
-              gallery={gallery}
-              onChoose={version =>
+              view={resultsView}
+              onChoose={(batchId, version) =>
                 update({
-                  selectedBatchId: batch.id,
-                  selectedVersions: { ...draft.selectedVersions, [batch.id]: version },
+                  selectedBatchId: batchId,
+                  selectedVersions: { ...draft.selectedVersions, [batchId]: version },
                 })
               }
               onPreview={setPreview}
-              onRestore={() => restoreBatch(batch)}
+              onRestore={restoreBatch}
               locked={locked || upload.isPending}
             />
           ) : null}
@@ -467,16 +497,25 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
             </Button>
           </Notice>
         ) : null}
-        {accept.error && !draft.command && !accept.isPending ? (
+        {accept.error && !draft.command && !accepting ? (
           <Notice tone="danger" title={t("imageStudio.submitFailed")}>
             <p>{errorText(accept.error)}</p>
           </Notice>
         ) : null}
-        {draft.command && !accept.isPending ? (
+        {draft.command && !accepting ? (
           <Notice tone="warning" title={t("imageStudio.acceptanceUncertain")}>
             {accept.error ? <p>{errorText(accept.error)}</p> : null}
             <p>{t("imageStudio.acceptanceUncertainHint")}</p>
-            <Button type="button" variant="outline" onClick={() => draft.command && accept.mutate(draft.command)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                if (draft.command) {
+                  update({ viewingSubmission: true });
+                  accept.mutate(draft.command);
+                }
+              }}
+            >
               {t("imageStudio.retryAcceptance")}
             </Button>
           </Notice>
@@ -536,7 +575,11 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
                   disabled={!capability || upload.isPending || draft.references.length >= capability.maxReferenceImages}
                   onClick={() => inputRef.current?.click()}
                 >
-                  <Plus aria-hidden="true" />
+                  {upload.isPending ? (
+                    <CircleNotch className="image-studio-spinner" aria-hidden="true" />
+                  ) : (
+                    <Plus aria-hidden="true" />
+                  )}
                 </Button>
                 <input
                   ref={inputRef}
@@ -707,9 +750,13 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
                 </>
               ) : null}
             </div>
-            <Button className="image-studio-generate" type="submit" disabled={!canGenerate}>
-              <Sparkle weight="fill" aria-hidden="true" />
-              {accept.isPending ? t("imageStudio.submitting") : t("imageStudio.generate")}
+            <Button className="image-studio-generate" type="submit" disabled={!canGenerate} aria-busy={accepting}>
+              {accepting ? (
+                <CircleNotch className="image-studio-spinner" data-icon="inline-start" aria-hidden="true" />
+              ) : (
+                <Sparkle data-icon="inline-start" weight="fill" aria-hidden="true" />
+              )}
+              {accepting ? t("imageStudio.submitting") : t("imageStudio.generate")}
             </Button>
           </div>
         </fieldset>
