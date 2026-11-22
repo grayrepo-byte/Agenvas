@@ -16,7 +16,14 @@ import {
   type ReactNode,
   type SyntheticEvent,
 } from "react";
-import Lightbox, { IconButton, type ControllerRef, type Slide } from "yet-another-react-lightbox";
+import Lightbox, {
+  IconButton,
+  NextIcon,
+  PreviousIcon,
+  getSlideKey,
+  type ControllerRef,
+  type Slide,
+} from "yet-another-react-lightbox";
 import Fullscreen from "yet-another-react-lightbox/plugins/fullscreen";
 import Video from "yet-another-react-lightbox/plugins/video";
 import Zoom from "yet-another-react-lightbox/plugins/zoom";
@@ -39,6 +46,12 @@ type MediaPreviewDialogProps = {
   contentType?: string;
   width?: number;
   height?: number;
+  imageGallery?: {
+    slides: readonly { src: string; alt: string; width?: number; height?: number }[];
+    index: number;
+    onIndexChange: (index: number) => void;
+    positionLabel: string;
+  };
   onClose: () => void;
 };
 
@@ -153,6 +166,7 @@ export function MediaPreviewDialog({
   contentType,
   width,
   height,
+  imageGallery,
   onClose,
 }: MediaPreviewDialogProps) {
   useLocale();
@@ -171,7 +185,11 @@ export function MediaPreviewDialog({
   );
   const previewLabel =
     kind === "image" ? t("media.preview.imageLabel", { "0": title }) : t("media.preview.videoLabel", { "0": title });
-  const slides: Slide[] = [
+  const gallery = kind === "image" ? imageGallery : undefined;
+  const hasGalleryNavigation = (gallery?.slides.length ?? 0) > 1;
+  const previousDisabled = !gallery || gallery.index <= 0;
+  const nextDisabled = !gallery || gallery.index >= gallery.slides.length - 1;
+  const slides: readonly Slide[] = gallery?.slides ?? [
     kind === "image"
       ? {
           type: "image",
@@ -207,6 +225,7 @@ export function MediaPreviewDialog({
       open
       close={onClose}
       slides={slides}
+      index={gallery?.index}
       plugins={PREVIEW_PLUGINS}
       className="media-preview-dialog nodrag nowheel nopan"
       carousel={{ finite: true, preload: 0, padding: PREVIEW_SLIDE_PADDING_PX }}
@@ -220,8 +239,10 @@ export function MediaPreviewDialog({
         "Photo gallery": previewLabel,
         Carousel: previewLabel,
         Slide: previewLabel,
-        "{index} of {total}": previewLabel,
+        "{index} of {total}": gallery?.positionLabel ?? previewLabel,
         Close: t("media.preview.close"),
+        Previous: gallery ? t("media.preview.previousImage") : undefined,
+        Next: gallery ? t("media.preview.nextImage") : undefined,
         "Zoom in": t("media.preview.zoomIn"),
         "Zoom out": t("media.preview.zoomOut"),
         "Enter Fullscreen": t("media.preview.enterFullscreen"),
@@ -241,10 +262,46 @@ export function MediaPreviewDialog({
           onDoubleClick: stopPreviewPropagation,
         },
       }}
-      on={{ entered: () => closeRef.current?.focus(), exiting: stopVideoPlayback }}
+      on={{
+        entered: () => closeRef.current?.focus(),
+        exiting: stopVideoPlayback,
+        view: ({ index }) => {
+          if (gallery && index !== gallery.index) gallery.onIndexChange(index);
+        },
+      }}
       render={{
-        buttonPrev: () => null,
-        buttonNext: () => null,
+        // Keep focus on the activated arrow when it reaches a finite end.
+        buttonPrev: () =>
+          hasGalleryNavigation ? (
+            <IconButton
+              className="yarl__navigation_prev"
+              label="Previous"
+              icon={PreviousIcon}
+              aria-disabled={previousDisabled}
+              onClick={() => {
+                if (!previousDisabled) controllerRef.current?.prev();
+              }}
+            />
+          ) : null,
+        buttonNext: () =>
+          hasGalleryNavigation ? (
+            <IconButton
+              className="yarl__navigation_next"
+              label="Next"
+              icon={NextIcon}
+              aria-disabled={nextDisabled}
+              onClick={() => {
+                if (!nextDisabled) controllerRef.current?.next();
+              }}
+            />
+          ) : null,
+        controls: gallery
+          ? () => (
+              <div className="media-preview-position" role="status">
+                {gallery.positionLabel}
+              </div>
+            )
+          : undefined,
         buttonZoom: kind === "video" ? () => null : undefined,
         buttonClose: () => (
           <IconButton
@@ -261,8 +318,12 @@ export function MediaPreviewDialog({
         iconExitFullscreen: () => <ArrowsInSimple size={PREVIEW_ICON_SIZE} aria-hidden="true" />,
         iconLoading: () => <LoadingState compact label={t("media.preview.loading")} />,
         iconError: () => <PreviewLoadError onRetry={retry} />,
-        slideContainer: ({ children }) => (
-          <PreviewSlideContainer key={`${sourceUrl}:${attempt}`} kind={kind} onRetry={retry}>
+        slideContainer: ({ slide, children }) => (
+          <PreviewSlideContainer
+            key={`${gallery ? getSlideKey(slide) : sourceUrl}:${attempt}`}
+            kind={kind}
+            onRetry={retry}
+          >
             {children}
           </PreviewSlideContainer>
         ),

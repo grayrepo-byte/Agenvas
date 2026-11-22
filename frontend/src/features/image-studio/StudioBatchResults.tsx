@@ -69,12 +69,26 @@ function statusAppearance(status: FrameStatus) {
   }
 }
 
-function BatchNotices({ batch }: { batch: ImageStudioBatch }) {
+function BatchNotices({
+  batch,
+  status,
+  readyCount,
+  total,
+}: {
+  batch: ImageStudioBatch;
+  status: StudioStatus;
+  readyCount: number;
+  total: number;
+}) {
   const unknown = batch.tasks.some(task => task.status === "UNKNOWN");
   const blocked = batch.tasks.some(task => task.status === "BLOCKED");
   const archiving = batch.tasks.some(task => task.errorCode === ARCHIVE_RETRY_CODE);
   const missing = batch.tasks.some(task => task.errorCode === ARCHIVE_MISSING_CODE);
-  if (!unknown && !blocked && !batch.tasks.some(task => task.errorCode)) return null;
+  const hasErrors = batch.tasks.some(task => task.errorCode);
+  const terminal = !unknown && !blocked && !archiving && !missing;
+  const partial = terminal && status === "imageStudio.status.partial";
+  const failed = terminal && status === "imageStudio.status.failed";
+  if (!unknown && !blocked && !archiving && !missing && !partial && !failed && !hasErrors) return null;
   return (
     <div className="image-studio-task-feedback">
       {unknown ? (
@@ -96,15 +110,30 @@ function BatchNotices({ batch }: { batch: ImageStudioBatch }) {
           <p>{t("imageStudio.blockedHint")}</p>
         </Notice>
       ) : null}
-      {batch.tasks.map((task, index) =>
-        task.errorCode ? (
-          <p className="image-studio-task" key={task.id}>
-            <strong>{t("imageStudio.taskLabel", { "0": index + 1 })}</strong>
-            <span>{t(taskStatus(task))}</span>
-            <code>{task.errorCode}</code>
+      {partial || failed ? (
+        <Notice tone={partial ? "warning" : "danger"} title={t(status)}>
+          <p>
+            {t(partial ? "imageStudio.partialResultHint" : "imageStudio.failedResultHint", {
+              "0": readyCount,
+              "1": total,
+            })}
           </p>
-        ) : null,
-      )}
+        </Notice>
+      ) : null}
+      {hasErrors ? (
+        <details>
+          <summary className="w-fit cursor-pointer">{t("imageStudio.errorDetails")}</summary>
+          {batch.tasks.map((task, index) =>
+            task.errorCode ? (
+              <p className="image-studio-task" key={task.id}>
+                <strong>{t("imageStudio.taskLabel", { "0": index + 1 })}</strong>
+                <span>{t(taskStatus(task))}</span>
+                <code>{task.errorCode}</code>
+              </p>
+            ) : null,
+          )}
+        </details>
+      ) : null}
     </div>
   );
 }
@@ -143,6 +172,20 @@ function GenerationFrame({
 }
 
 type ImageOutcome = "ready" | "failed";
+type ImageRead = { outcome?: ImageOutcome; attempt?: number };
+type ImageReads = Record<string, ImageRead>;
+
+function previewUrl(url: string, attempt?: number) {
+  return attempt === undefined ? url : `${url}?previewRetry=${attempt}`;
+}
+
+function retryFailedReads(reads: ImageReads, attempt: number, onlyVersion?: string): ImageReads {
+  const next = { ...reads };
+  for (const version of onlyVersion === undefined ? Object.keys(reads) : [onlyVersion]) {
+    if (reads[version]?.outcome === "failed") next[version] = { attempt };
+  }
+  return next;
+}
 
 function ResultPhoto({
   preview,
@@ -152,8 +195,8 @@ function ResultPhoto({
   onOriginal,
 }: {
   preview: StudioPreview;
-  original?: ImageOutcome;
-  thumbnail?: ImageOutcome;
+  original?: ImageRead;
+  thumbnail?: ImageRead;
   firstPhoto: boolean;
   onOriginal: (outcome: ImageOutcome) => void;
 }) {
@@ -162,25 +205,21 @@ function ResultPhoto({
     <span
       className="image-studio-photo"
       style={
-        thumbnail === "ready" && (!firstPhoto || original !== "ready")
-          ? { backgroundImage: `url("${assetThumbnailUrl(projectId, result.assetId)}")` }
+        thumbnail?.outcome === "ready" && (!firstPhoto || original?.outcome !== "ready")
+          ? { backgroundImage: `url("${previewUrl(assetThumbnailUrl(projectId, result.assetId), thumbnail.attempt)}")` }
           : undefined
       }
     >
       <img
-        src={assetContentUrl(projectId, result.assetId)}
+        key={original?.attempt}
+        src={previewUrl(assetContentUrl(projectId, result.assetId), original?.attempt)}
         width={result.width}
         height={result.height}
         alt={t("imageStudio.resultImage", { "0": index })}
-        data-loaded={original === "ready"}
+        data-loaded={original?.outcome === "ready"}
         onLoad={() => onOriginal("ready")}
         onError={() => onOriginal("failed")}
       />
-      {original === "failed" && thumbnail ? (
-        <span className="image-studio-photo-error">
-          {t(thumbnail === "ready" ? "imageStudio.originalUnavailable" : "media.card.previewUnavailable")}
-        </span>
-      ) : null}
     </span>
   );
 }
@@ -218,8 +257,8 @@ export function StudioBatchResults({
   const active = gallery?.active;
   const slots: StudioSlot[] =
     gallery?.slots ?? Array.from({ length: parameters.generationCount ?? 1 }, (_, i) => ({ key: String(i), status }));
-  const [thumbnails, setThumbnails] = useState<Record<string, ImageOutcome>>({});
-  const [originals, setOriginals] = useState<Record<string, ImageOutcome>>({});
+  const [thumbnails, setThumbnails] = useState<ImageReads>({});
+  const [originals, setOriginals] = useState<ImageReads>({});
   const [originalCandidate, setOriginalCandidate] = useState<string>();
   const [reveal, setReveal] = useState<{ version: string; playing: boolean }>();
   const finishReveal = useCallback(() => {
@@ -235,12 +274,12 @@ export function StudioBatchResults({
       if (!result) continue;
       const version = result.artifactVersionId;
       const preview = { result, projectId: batch.projectId, index: index + 1 };
-      thumbnailPending ||= thumbnails[version] === undefined;
-      if (thumbnails[version] === "ready" || originals[version] === "ready") {
+      thumbnailPending ||= thumbnails[version]?.outcome === undefined;
+      if (thumbnails[version]?.outcome === "ready" || originals[version]?.outcome === "ready") {
         firstReady = preview;
         break;
       }
-      if (originals[version] !== "failed") {
+      if (originals[version]?.outcome !== "failed") {
         next ??= preview;
         if (version === originalCandidate) current = preview;
       }
@@ -283,13 +322,25 @@ export function StudioBatchResults({
   const photoVersion = photo?.result.artifactVersionId;
   const firstPhoto = awaitingFirstPreview || (reveal !== undefined && reveal.version === photoVersion);
   const revealing = playing && firstPhoto;
+  const photoThumbnail = photoVersion ? thumbnails[photoVersion] : undefined;
+  const photoOriginal = photoVersion ? originals[photoVersion] : undefined;
+  const photoFailed = photoOriginal?.outcome === "failed" && photoThumbnail?.outcome !== undefined;
+  const canReload = waitingForImage ? frameStatus === "media.card.previewUnavailable" : photoFailed;
+  function reloadPreview() {
+    const attempt = Date.now();
+    const version = waitingForImage ? undefined : photoVersion;
+    setThumbnails(previous => retryFailedReads(previous, attempt, version));
+    setOriginals(previous => retryFailedReads(previous, attempt, version));
+  }
   const ratio = parameters.aspectRatio && parameters.aspectRatio !== "AUTO" ? parameters.aspectRatio : "1:1";
   const aspect = photo ? photo.result.width / photo.result.height : ratio.replace(":", " / ");
   const format = [ratio, parameters.resolution].filter(Boolean).join(" · ");
   const { tone } = statusAppearance(status);
   return (
     <>
-      {batch ? <BatchNotices batch={batch} /> : null}
+      {batch && gallery ? (
+        <BatchNotices batch={batch} status={status} readyCount={gallery.readyCount} total={slots.length} />
+      ) : null}
       <div className="image-studio-hero" style={{ "--studio-result-ratio": aspect } as CSSProperties}>
         {photo && photoVersion ? (
           <Button
@@ -307,10 +358,12 @@ export function StudioBatchResults({
             <ResultPhoto
               key={photoVersion}
               preview={photo}
-              original={originals[photoVersion]}
-              thumbnail={thumbnails[photoVersion]}
+              original={photoOriginal}
+              thumbnail={photoThumbnail}
               firstPhoto={firstPhoto}
-              onOriginal={outcome => setOriginals(previous => ({ ...previous, [photoVersion]: outcome }))}
+              onOriginal={outcome =>
+                setOriginals(previous => ({ ...previous, [photoVersion]: { ...previous[photoVersion], outcome } }))
+              }
             />
             <span className="image-studio-photo-index" aria-hidden="true">
               {String(photo.index).padStart(2, "0")} / {String(slots.length).padStart(2, "0")}
@@ -326,6 +379,28 @@ export function StudioBatchResults({
           />
         ) : null}
       </div>
+      {canReload ? (
+        <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 text-sm text-muted-foreground">
+          {photoFailed ? (
+            <span aria-live="polite">
+              {t(
+                photoThumbnail.outcome === "ready"
+                  ? "imageStudio.originalUnavailable"
+                  : "media.card.previewUnavailable",
+              )}
+            </span>
+          ) : null}
+          <Button
+            className="image-studio-reload-preview"
+            variant="outline"
+            size="sm"
+            type="button"
+            onClick={reloadPreview}
+          >
+            {t("imageStudio.reloadPreview")}
+          </Button>
+        </div>
+      ) : null}
       <div className="image-studio-gallery">
         <div className="image-studio-gallery-caption">
           <div className="image-studio-gallery-summary" role="status" aria-atomic="true">
@@ -352,30 +427,35 @@ export function StudioBatchResults({
               const item = slot.result;
               if (item && batch) {
                 const label = t("imageStudio.chooseVariant", { "0": index + 1 });
+                const version = item.artifactVersionId;
+                const thumbnail = thumbnails[version];
+                const setOutcome = (outcome: ImageOutcome) =>
+                  setThumbnails(previous => ({ ...previous, [version]: { ...previous[version], outcome } }));
                 return (
                   <Button
                     key={slot.key}
                     type="button"
                     variant="ghost"
                     className="image-studio-variant"
-                    data-version-id={item.artifactVersionId}
-                    aria-pressed={!waitingForImage && item.artifactVersionId === photoVersion}
+                    data-version-id={version}
+                    aria-pressed={!waitingForImage && version === photoVersion}
                     aria-label={label}
                     title={label}
                     onClick={() => {
                       finishReveal();
-                      onChoose(batch.id, item.artifactVersionId);
+                      onChoose(batch.id, version);
                     }}
                   >
                     <img
-                      src={assetThumbnailUrl(batch.projectId, item.assetId)}
+                      key={thumbnail?.attempt}
+                      src={previewUrl(assetThumbnailUrl(batch.projectId, item.assetId), thumbnail?.attempt)}
                       alt=""
-                      onLoad={() => setThumbnails(previous => ({ ...previous, [item.artifactVersionId]: "ready" }))}
-                      onError={() => setThumbnails(previous => ({ ...previous, [item.artifactVersionId]: "failed" }))}
+                      onLoad={() => setOutcome("ready")}
+                      onError={() => setOutcome("failed")}
                     />
                     <span
                       className="image-studio-slot-number"
-                      data-first-reveal={revealing && item.artifactVersionId === photoVersion ? "" : undefined}
+                      data-first-reveal={revealing && version === photoVersion ? "" : undefined}
                       aria-hidden="true"
                     >
                       {number}

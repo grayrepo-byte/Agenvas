@@ -9,6 +9,7 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const syntheticMedia = "/api/v1/projects/synthetic-image-studio/assets/synthetic-studio-";
 const mediaGates = new Map();
 const mediaReads = new Map();
+const unavailableMedia = new Set();
 const screenshots = process.env.AGENVAS_E2E_SCREENSHOT_DIR;
 function holdMedia(path) {
   const gate = Promise.withResolvers();
@@ -27,9 +28,13 @@ const server = await createServer({
       enforce: "pre",
       configureServer({ middlewares }) {
         middlewares.use((request, _response, next) => {
-          const path = request.url;
+          const path = request.url?.split("?", 1)[0];
           if (!path?.startsWith(syntheticMedia)) return next();
           mediaReads.set(path, (mediaReads.get(path) ?? 0) + 1);
+          if (unavailableMedia.has(path)) {
+            _response.writeHead(503, { "Cache-Control": "no-store" }).end();
+            return;
+          }
           const gate = mediaGates.get(path);
           if (gate) void gate.promise.then(() => next());
           else next();
@@ -234,7 +239,24 @@ try {
       assert.equal(layout.allVariantsVisible, true, `${viewport.width}/${locale}: four variants fit without scrolling`);
       if (viewport.width <= 640)
         assert.equal(layout.touchActionsOnOwnRow, true, "Narrow actions stay below the filmstrip with 44px targets");
-      if (viewport.width === 390 && locale === "zh") await capture("studio-mobile-gallery.png");
+      if (viewport.width === 390) {
+        assert.equal(
+          await page(() => {
+            const model = document.querySelector(".image-studio-model").getBoundingClientRect();
+            return [...document.querySelectorAll(".image-studio-parameter")].every(parameter => {
+              const label = parameter.querySelector(".image-studio-setting-label");
+              return (
+                !!label?.innerText.trim() &&
+                label.getBoundingClientRect().height > 1 &&
+                parameter.getBoundingClientRect().top >= model.bottom
+              );
+            });
+          }),
+          true,
+          "Mobile shows parameter labels beneath the model",
+        );
+        if (locale === "zh") await capture("studio-mobile-gallery.png");
+      }
       if (viewport.width > 900 && locale === "zh") {
         const metadataVisible = await page(() => {
           const rows = [...document.querySelectorAll(".image-studio-history .image-studio-history-item")];
@@ -291,6 +313,9 @@ try {
         await waitFor(() => document.activeElement.classList.contains("image-studio-history-toggle"));
       }
       assert.equal(await page(() => document.querySelector("textarea").value), "光影摄影练习 · 公开授权示例 · Mock");
+      const cue = await page(() => document.querySelector(".image-studio-history-prompt [role=status]")?.textContent);
+      assert.match(cue, /#SYNTHETI/);
+      if (locale === "zh") assert.match(cue, /其他设置未变/);
       await click(".image-studio-undo-history-prompt");
       assert.equal(await page(() => document.querySelector("textarea").value), "独立草稿\n第二行\n第三行");
       assert.equal(
@@ -315,7 +340,16 @@ try {
       );
       await chooseBatch("synthetic-partial-batch");
       await imageReady(1);
+      if (locale === "zh") {
+        assert.match(
+          await page(() => document.querySelector(".image-studio-task-feedback").innerText),
+          /已保存 1 \/ 2 张图片，可预览和下载/,
+        );
+      }
+      assert.equal(await page(() => document.body.innerText.includes("SYNTHETIC_PROVIDER_REJECTED")), false);
+      await click(".image-studio-task-feedback summary");
       assert.equal(await page(() => document.body.innerText.includes("SYNTHETIC_PROVIDER_REJECTED")), true);
+      assert.ok(await page(() => document.querySelector(".image-studio-result-actions a[download]")?.href));
       await chooseBatch("synthetic-saved-batch");
       await imageReady(4);
       await click(".image-studio-restore");
@@ -339,9 +373,25 @@ try {
       assert.deepEqual(evidence.unexpected, []);
       if (viewport.width === 1487 && locale === "zh") {
         await click(".image-studio-image-button");
-        await waitFor(() => !!document.querySelector(".yarl__root"));
+        await waitFor(() => !!document.querySelector(".yarl__root button[aria-label='关闭预览']:focus"));
+        const dialogImage = ".yarl__slide_current img";
+        await waitFor(selector => document.querySelector(selector)?.naturalWidth > 0, dialogImage);
+        const initial = await page(selector => document.querySelector(selector)?.getAttribute("src"), dialogImage);
+        await key("ArrowRight", "ArrowRight", 39);
+        await waitFor(
+          ({ selector, initial }) => {
+            const src = document.querySelector(selector)?.getAttribute("src");
+            return !!src && src !== initial;
+          },
+          { selector: dialogImage, initial },
+        );
+        await waitFor(() => document.querySelector(".yarl__root").innerText.includes("02 / 04"));
+        await click('.yarl__root button[aria-label="下一张图片"]');
+        await waitFor(() => document.querySelector(".yarl__root").innerText.includes("03 / 04"));
         await key("Escape", "Escape", 27);
         await waitFor(() => !document.querySelector(".yarl__root"));
+        await waitFor(() => document.querySelector(".image-studio-photo-index").innerText === "03 / 04");
+        assert.equal((await page(() => window.__imageStudio.evidence())).writes.length, 2);
         const path = await page(() =>
           document.querySelector(".image-studio-result-actions a[download]").getAttribute("href"),
         );
@@ -586,8 +636,23 @@ try {
     await capture(`studio-${shape}-thumbnail.png`);
     showOriginal();
     await imageReady(1);
+    if (viewport.width > 900) {
+      await click(".image-studio-image-button");
+      await waitFor(() => document.querySelector(".media-preview-position")?.innerText === "04 / 04");
+      assert.equal(await page(() => !!document.querySelector(".yarl__navigation_prev")), false);
+    }
     await page(() => window.__imageStudio.finishNextOutput());
     await imageReady(2);
+    if (viewport.width > 900) {
+      await waitFor(() => !!document.querySelector('.yarl__navigation_prev[aria-disabled="false"]'));
+      assert.equal(await page(() => document.querySelector(".media-preview-position").innerText), "04 / 04");
+      await click(".yarl__navigation_prev");
+      await waitFor(() => document.querySelector(".media-preview-position")?.innerText === "03 / 04");
+      await click(".yarl__navigation_next");
+      await waitFor(() => document.querySelector(".media-preview-position")?.innerText === "04 / 04");
+      await key("Escape", "Escape", 27);
+      await waitFor(() => !document.querySelector(".yarl__root"));
+    }
     await chooseBatch("synthetic-previous-batch");
     await imageReady(1);
     await chooseBatch("5ba708e3-0000-4000-8000-000000000001");
@@ -613,6 +678,41 @@ try {
   );
   assert.equal((await page(() => window.__imageStudio.evidence())).writes.length, 1);
   console.log("Studio cached media: receipt with result reveals once without another media request");
+  await cdp("Network.enable");
+  await cdp("Network.setCacheDisabled", { cacheDisabled: true });
+  const savedPreviewPaths = ["content", "thumbnail"].map(kind => `${syntheticMedia}portrait-0/${kind}`);
+  for (const path of savedPreviewPaths) unavailableMedia.add(path);
+  await navigate("portrait", "zh", "ok=1");
+  await observeReveal();
+  await waitFor(() => !!document.querySelector(".image-studio-reload-preview"));
+  assert.match(await page(() => document.querySelector(".image-studio-gallery-summary").innerText), /已出图 1 \/ 1/);
+  for (const path of savedPreviewPaths) unavailableMedia.delete(path);
+  await click(".image-studio-reload-preview");
+  await imageReady(1);
+  assert.deepEqual(await page(() => window.__studioReveal.animations), []);
+  assert.equal((await page(() => window.__imageStudio.evidence())).writes.length, 0);
+
+  const failedFirstPaths = ["content", "thumbnail"].map(kind => `${syntheticMedia}landscape-103/${kind}`);
+  for (const path of failedFirstPaths) unavailableMedia.add(path);
+  await navigate("feedback", "zh", "ok=1&revealShape=landscape");
+  await imageReady(4);
+  await observeReveal();
+  await click(".image-studio-restore");
+  await click(".image-studio-generate");
+  await waitFor(() => document.querySelector(".image-studio-generation-frame h2")?.textContent === "正在提交生图请求");
+  await page(() => window.__imageStudio.acknowledge());
+  await waitFor(() => document.querySelector(".image-studio-generation-frame h2")?.textContent === "排队中");
+  await page(() => window.__imageStudio.finishNextOutput());
+  await waitFor(() => !!document.querySelector(".image-studio-reload-preview"));
+  assert.deepEqual(await page(() => window.__studioReveal.animations), []);
+  for (const path of failedFirstPaths) unavailableMedia.delete(path);
+  await click(".image-studio-reload-preview");
+  await waitFor(() => window.__studioReveal.animations.length === 2);
+  await imageReady(1);
+  assert.equal(await page(() => document.querySelector(".image-studio-photo-index").innerText), "04 / 04");
+  assert.equal((await page(() => window.__imageStudio.evidence())).writes.length, 1);
+  await cdp("Network.setCacheDisabled", { cacheDisabled: false });
+  console.log("Studio recovery: asset-only reload for historical and first previews without a new command");
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1487, height: 1058, deviceScaleFactor: 1, mobile: false });
   await navigate("polling");
   await imageReady(3);
@@ -637,6 +737,36 @@ try {
   assert.equal(await page(() => document.querySelector("textarea").value), editedPrompt);
   assert.equal((await page(() => window.__imageStudio.evidence())).writes.length, 0);
   await cdp("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });
+  await navigate("grid", "zh", "ok=1");
+  await imageReady(4);
+  await click('.image-studio-variant[data-version-id="synthetic-version-2"]');
+  await waitFor(() => document.querySelector(".image-studio-photo-index").innerText === "03 / 04");
+  await click(".image-studio-image-button");
+  await waitFor(() => document.querySelector(".yarl__root")?.innerText.includes("03 / 04"));
+  await click('.yarl__root button[aria-label="上一张图片"]');
+  await waitFor(() => document.querySelector(".yarl__root")?.innerText.includes("02 / 04"));
+  await waitFor(
+    () =>
+      document.querySelector('.yarl__slide_current img[src*="synthetic-studio-square-1/content"]')?.naturalWidth > 0,
+  );
+  await capture("studio-mobile-batch-preview.png");
+  await key("Escape", "Escape", 27);
+  await waitFor(() => !document.querySelector(".yarl__root"));
+  await waitFor(() => document.querySelector(".image-studio-photo-index").innerText === "02 / 04");
+
+  await chooseBatch("synthetic-saved-batch");
+  await waitFor(() => document.querySelector(".image-studio-history-prompt [role=status]")?.textContent.includes("#"));
+  await chooseBatch("synthetic-pending-batch");
+  await waitFor(() => !document.querySelector(".image-studio-image-button"));
+  await click(".image-studio-restore-history-prompt");
+  await waitFor(() => !document.querySelector(".image-studio-undo-history-prompt"));
+  assert.match(await page(() => document.querySelector("textarea").value), /^清晨海边的小屋/);
+  assert.equal(
+    await page(() => document.querySelector('.image-studio-parameter [role="combobox"][aria-label="数量"]').innerText),
+    "4 张",
+  );
+  assert.equal((await page(() => window.__imageStudio.evidence())).writes.length, 0);
+  console.log("Studio mobile: readable parameters, original-source full restore, and enlarged variant navigation");
   await navigate("grid", "zh", "ok=1");
   await imageReady(4);
   await click("textarea");

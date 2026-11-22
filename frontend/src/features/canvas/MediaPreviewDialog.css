@@ -28,12 +28,37 @@
   min-height: var(--ui-control-height);
   border-radius: var(--ui-radius-md);
 }
-.media-preview-dialog .yarl__button:hover:not(:disabled) {
+.media-preview-dialog :is(.yarl__navigation_prev, .yarl__navigation_next) {
+  margin-inline: var(--ui-space-2);
+  padding: var(--ui-space-2);
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface-raised);
+}
+.media-preview-dialog .yarl__button:hover:not(:disabled, [aria-disabled="true"]) {
   background: var(--ui-hover);
 }
 .media-preview-dialog .yarl__button:focus-visible {
   outline: var(--ui-focus-width) solid var(--ui-focus);
   outline-offset: var(--ui-focus-offset);
+}
+.media-preview-dialog .yarl__button[aria-disabled="true"] {
+  color: var(--yarl__color_button_disabled);
+  cursor: default;
+}
+.media-preview-position {
+  position: absolute;
+  inset-inline: 0;
+  bottom: var(--ui-space-4);
+  width: max-content;
+  margin-inline: auto;
+  padding: var(--ui-space-1) var(--ui-space-2);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface-raised);
+  pointer-events: none;
+  color: var(--ui-text-secondary);
+  font-size: var(--ui-text-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 .media-preview-slide,
 .media-preview-content {

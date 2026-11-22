@@ -57,6 +57,15 @@
 - **THEN** 四个位置均无需横向滚动即可看见，回填参数、放大和下载位于胶片下方的独立操作行
 - **AND** 超出可视宽度的原生额外结果仍可横向浏览
 
+### Requirement: Identify generation controls on narrow screens
+
+窄屏编辑栏 MUST 让用户不依赖图标辨认常用生成参数。
+
+#### Scenario: Scan the model and available parameters on a phone
+
+- **WHEN** 用户在窄屏工作台编辑拥有多项生成参数的模型
+- **THEN** 模型独立成行，可用的常用参数在其下方显示可见标签，不隐藏到高级设置中
+
 ### Requirement: Keep a stable desktop result column
 
 桌面工作台 MUST 将取景区域、胶片和结果操作放在同一个居中的结果栏中。
@@ -65,6 +74,16 @@
 
 - **WHEN** 桌面用户查看不同宽高比的生成图
 - **THEN** 图片按原比例完整显示，胶片和结果操作不因图片变窄而缩进
+
+### Requirement: Compare archived variants in enlarged preview
+
+工作台 MUST 支持在同一批次的放大预览中切换已归档变体。
+
+#### Scenario: Browse enlarged results without rewriting the draft
+
+- **WHEN** 用户从带多个已归档变体的批次打开一张图片的放大预览
+- **THEN** 从该图片开始，可用上一张、下一张或键盘左右键按胶片顺序切换，跳过未归档位置并保留原编号
+- **AND** 关闭放大预览后，主图和胶片选中最后一张；不改写编辑草稿，也不提交新任务
 
 ### Requirement: Preview failure preserves generation outcomes
 
@@ -75,16 +94,24 @@
 - **WHEN** 缩略图或原图其中一个加载失败，而另一个可以显示
 - **THEN** 工作台显示可用图片；如果只能显示缩略图，则提示原图不可用
 - **AND** 不因同一结果切换清晰度而重复播放首张揭晓
+- **AND** 只剩缩略图可用时，用户可以重新加载原图而不移除可用的缩略图
 
 #### Scenario: No first preview can be displayed or is still loading
 
 - **WHEN** 当前有已归档结果，但所有候选预览均不可显示，且没有候选仍在加载
 - **THEN** 主图区显示预览不可用，不恢复扫描，已出图张数及任务状态保持真实
+- **AND** 用户可以重载已有图片的预览读取，不重新生成、不改写任务结果或已保存张数
 
 #### Scenario: No result was archived and the task has an exceptional outcome
 
 - **WHEN** 批次没有归档图片，任务失败、取消、待核实或归档受阻
 - **THEN** 工作台显示对应的批次或任务反馈，不显示正在加载预览，也不播放成功揭晓
+
+#### Scenario: Some results fail after other images were archived
+
+- **WHEN** 批次确认失败或仅部分完成
+- **THEN** 工作台先显示实际保存张数和已有图片的可用性，技术错误码只在详情中呈现
+- **AND** 不自动重新生成；受理未确认时的核对仅复用原始请求
 
 ### Requirement: Identify desktop history before opening a batch
 
@@ -105,6 +132,7 @@
 - **WHEN** 用户在桌面历史栏或窄屏历史抽屉中点击或通过键盘激活有图片的历史卡片，包括已经默认选中的卡片
 - **THEN** 工作台直接用该批次的完整提示词替换编辑栏文字，用户可以继续修改，不必等待图片或再次点击「回填参数」
 - **AND** 模型、生成参数及参考图保持不变；窄屏抽屉照常关闭，不自动唤起键盘
+- **AND** 实际替换后，编辑栏就地标示来源批次和「其他设置未变」，并同时提供撤销和该批次的完整回填操作
 
 #### Scenario: Browsing and background updates do not rewrite the editor
 
@@ -121,6 +149,7 @@
 
 - **WHEN** 用户另行点击现有的「回填参数」操作
 - **THEN** 工作台仍按原有行为恢复该批次的提示词、模型、生成参数与固定版本参考图，但不提交生成
+- **AND** 编辑栏的完整回填读取提示词来源批次，而不是后来浏览的批次；已删除或无法读取的来源不覆盖当前草稿
 
 ### Requirement: Undo the last history prompt replacement
 

@@ -33,7 +33,7 @@ import {
   type Ref,
 } from "react";
 import { Link } from "react-router";
-import { ApiError, assetContentUrl, assetThumbnailUrl, getCurrentUser } from "../../shared/api/client";
+import { ApiError, assetThumbnailUrl, getCurrentUser } from "../../shared/api/client";
 import {
   createImageStudioBatch,
   deleteImageStudioBatch,
@@ -70,7 +70,6 @@ import {
 } from "../../shared/ui/primitives/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "../../shared/ui/primitives/popover";
 import { Textarea } from "../../shared/ui/primitives/textarea";
-import { MediaPreviewDialog } from "../canvas/MediaPreviewDialog";
 import {
   useImageStudioDraft,
   useImageStudioDraftStore,
@@ -78,7 +77,8 @@ import {
   type StudioDraft,
 } from "./imageStudioDraft";
 import { StudioBatchResults, type StudioResultsView } from "./StudioBatchResults";
-import { batchReference, batchStatus, studioGallery, type StudioPreview } from "./studioGallery";
+import { StudioGalleryPreview } from "./StudioGalleryPreview";
+import { batchReference, batchStatus, studioGallery } from "./studioGallery";
 import "./ImageStudioPage.css";
 
 const QUALITY_LABELS: Record<string, MessageKey> = {
@@ -146,9 +146,9 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
   const locale = useLocale();
   const queryClient = useQueryClient();
   const draft = useImageStudioDraft(ownerId);
-  const { promptBeforeHistory } = draft;
+  const { historyPrompt } = draft;
   const update = (patch: Partial<StudioDraft>) => useImageStudioDraftStore.getState().update(ownerId, patch);
-  const [preview, setPreview] = useState<StudioPreview | null>(null);
+  const [preview, setPreview] = useState<{ batchId: string; versionId: string } | null>(null);
   const [deletion, setDeletion] = useState<{ id: string; deleteFiles: boolean } | null>(null);
   const deleteTrigger = useRef<HTMLButtonElement>(null);
   const cancelDeletion = useRef<HTMLButtonElement>(null);
@@ -267,6 +267,9 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
         delete selectedVersions[id];
         const selected = current.selectedBatchId ?? cached?.pages.find(page => page.items.length)?.items[0]?.id;
         update({
+          ...(current.historyPrompt?.sourceBatchId === id
+            ? { historyPrompt: { ...current.historyPrompt, sourceDeleted: true } }
+            : {}),
           selectedVersions,
           awaitingHistory,
           ...(selected === id
@@ -281,6 +284,12 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
       void queryClient.invalidateQueries({ queryKey: listKey, exact: true });
     },
     retry: false,
+  });
+  const verifyHistorySource = useMutation({
+    // A cached history row can outlive deletion in another tab.
+    mutationFn: async ({ sourceBatchId }: NonNullable<StudioDraft["historyPrompt"]>) => {
+      await queryClient.fetchQuery({ ...batchOptions(ownerId, sourceBatchId), staleTime: 0 });
+    },
   });
   const upload = useMutation({
     mutationFn: uploadImageStudioReference,
@@ -327,7 +336,7 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
     };
     revealCommand.current = command.key;
     setRevealBatchId(undefined);
-    update({ command, viewingSubmission: true, promptBeforeHistory: null });
+    update({ command, viewingSubmission: true, historyPrompt: null });
     accept.mutate(command);
   }
   function chooseBatch(batch: ImageStudioBatch, hasImage: boolean) {
@@ -337,7 +346,7 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
       selectedBatchId: batch.id,
       viewingSubmission: false,
       ...(!locked && hasImage && batch.prompt !== draft.prompt
-        ? { prompt: batch.prompt, promptBeforeHistory: draft.prompt }
+        ? { prompt: batch.prompt, historyPrompt: { previousPrompt: draft.prompt, sourceBatchId: batch.id } }
         : {}),
     });
   }
@@ -353,11 +362,36 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
   function restoreBatch(batch: ImageStudioBatch) {
     update({
       prompt: batch.prompt,
-      promptBeforeHistory: null,
+      historyPrompt: null,
       capabilityId: batch.capabilityId,
       capabilityVersion: batch.capabilityVersion,
       parameters: { ...batch.parameters },
       references: batch.references.map(reference => ({ ...reference })),
+    });
+  }
+  function restoreHistoryPromptSettings() {
+    if (!historyPrompt || historyPrompt.sourceDeleted) return;
+    const id = historyPrompt.sourceBatchId;
+    verifyHistorySource.mutate(historyPrompt, {
+      onSuccess: () => {
+        const current = useImageStudioDraftStore.getState().owners[ownerId];
+        if (
+          !current ||
+          current.historyPrompt !== historyPrompt ||
+          current.capabilityId !== draft.capabilityId ||
+          current.capabilityVersion !== draft.capabilityVersion ||
+          current.parameters !== draft.parameters ||
+          current.references !== draft.references
+        )
+          return;
+        const source = queryClient.getQueryData<ImageStudioBatch>(batchKey(ownerId, id));
+        if (source) restoreBatch(source);
+      },
+      onError: error => {
+        const current = useImageStudioDraftStore.getState().owners[ownerId];
+        if (current?.historyPrompt === historyPrompt && error instanceof ApiError && error.status === 404)
+          update({ historyPrompt: { ...historyPrompt, sourceDeleted: true } });
+      },
     });
   }
   async function refresh() {
@@ -560,7 +594,9 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
               awaitingFirstPreview={awaitingFirstPreview}
               onFirstPreview={confirmFirstPreview}
               onChoose={chooseVersion}
-              onPreview={setPreview}
+              onPreview={({ result }) => {
+                if (batch) setPreview({ batchId: batch.id, versionId: result.artifactVersionId });
+              }}
               onRestore={restoreBatch}
               locked={locked || upload.isPending}
             />
@@ -719,29 +755,58 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
               <Textarea
                 id={promptId}
                 value={draft.prompt}
-                onChange={event => update({ prompt: event.target.value, promptBeforeHistory: null })}
+                onChange={event => update({ prompt: event.target.value, historyPrompt: null })}
                 placeholder={t("imageStudio.promptPlaceholder")}
                 maxLength={8000}
                 rows={3}
                 variant="ghost"
               />
-              {promptBeforeHistory !== null ? (
+            </Field>
+          </div>
+          <div className="image-studio-history-prompt">
+            <p role="status">
+              {historyPrompt
+                ? t("imageStudio.historyPromptLoaded", { "0": batchReference(historyPrompt.sourceBatchId) })
+                : null}
+            </p>
+            {historyPrompt ? (
+              <div className="image-studio-history-prompt-actions">
                 <Button
-                  className="image-studio-undo-history-prompt self-start"
+                  className="image-studio-undo-history-prompt"
                   type="button"
                   size="xs"
                   variant="ghost"
-                  onClick={() => update({ prompt: promptBeforeHistory, promptBeforeHistory: null })}
+                  onClick={() => update({ prompt: historyPrompt.previousPrompt, historyPrompt: null })}
                 >
                   {t("imageStudio.undoHistoryPrompt")}
                 </Button>
-              ) : null}
-            </Field>
+                {!historyPrompt.sourceDeleted ? (
+                  <Button
+                    className="image-studio-restore-history-prompt"
+                    type="button"
+                    size="xs"
+                    variant="ghost"
+                    disabled={upload.isPending || verifyHistorySource.isPending}
+                    onClick={restoreHistoryPromptSettings}
+                  >
+                    {t("imageStudio.restoreHistoryPromptSettings")}
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
+          {historyPrompt &&
+          !historyPrompt.sourceDeleted &&
+          verifyHistorySource.variables === historyPrompt &&
+          verifyHistorySource.error ? (
+            <p className="image-studio-error" role="alert">
+              {errorText(verifyHistorySource.error)}
+            </p>
+          ) : null}
           <div className="image-studio-composer-toolbar">
             <div className="image-studio-settings">
               <Field className="image-studio-model">
-                <FieldLabel className="sr-only" htmlFor={`${promptId}-model`}>
+                <FieldLabel className="image-studio-setting-label" htmlFor={`${promptId}-model`}>
                   {t("imageStudio.model")}
                 </FieldLabel>
                 <Select
@@ -879,15 +944,14 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
           </div>
         </fieldset>
       </form>
-      {preview ? (
-        <MediaPreviewDialog
-          kind="image"
-          title={t("imageStudio.resultImage", { "0": preview.index })}
-          sourceUrl={assetContentUrl(preview.projectId, preview.result.assetId)}
-          width={preview.result.width}
-          height={preview.result.height}
-          contentType={preview.result.contentType}
-          onClose={() => setPreview(null)}
+      {preview && batch && preview.batchId === batch.id ? (
+        <StudioGalleryPreview
+          batch={batch}
+          initialVersionId={preview.versionId}
+          onClose={versionId => {
+            if (versionId !== visibleVersion) chooseVersion(batch.id, versionId);
+            setPreview(null);
+          }}
         />
       ) : null}
       <Dialog
@@ -986,7 +1050,7 @@ function ParameterSelect({
 }) {
   return (
     <Field className="image-studio-parameter" title={label}>
-      <FieldLabel className="sr-only" htmlFor={id}>
+      <FieldLabel className="image-studio-setting-label" htmlFor={id}>
         {label}
       </FieldLabel>
       <Select

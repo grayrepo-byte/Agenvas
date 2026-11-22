@@ -6,6 +6,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { MemoryRouter, Routes, Route } from "react-router";
 import { createQueryClient } from "../../app/queryClient";
 import type { CreateImageStudioBatch } from "../../shared/api/imageStudio";
+import { t } from "../../shared/i18n";
 import { server } from "../../test/server";
 import { ImageStudioPage } from "./ImageStudioPage";
 import { useImageStudioDraftStore } from "./imageStudioDraft";
@@ -206,6 +207,14 @@ it.each(["original", "thumbnail", "neither"] as const)(
         fireEvent.load(thumb);
         expect(stage.getByRole("button", { name: "选择变体 1" })).toHaveAttribute("aria-pressed", "true");
         expect(stage.getByText("原图暂不可用")).toBeVisible();
+        const thumbnailUrl = thumb.getAttribute("src");
+        await user.click(stage.getByRole("button", { name: t("imageStudio.reloadPreview") }));
+        const retried = stage.getByRole("img", { name: "生成图片 1" });
+        expect(retried).toHaveAttribute("src", expect.stringContaining("/result-asset/content?previewRetry="));
+        expect(thumb).toHaveAttribute("src", thumbnailUrl);
+        expect(retried.parentElement?.style.backgroundImage).toContain(thumbnailUrl);
+        fireEvent.load(retried);
+        expect(stage.queryByText("原图暂不可用")).not.toBeInTheDocument();
       } else {
         fireEvent.error(thumb);
         expect(stage.getByRole("heading", { name: "预览暂不可用" })).toBeVisible();
@@ -299,7 +308,7 @@ it("keeps a pending submission visible after leaving the route and coming back",
     firstVisit.unmount();
     show("/image-studio", client);
     expect(await screen.findByRole("heading", { name: "正在提交生图请求" })).toBeVisible();
-    expect(screen.queryByRole("button", { name: "重试受理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "核对原请求" })).not.toBeInTheDocument();
   } finally {
     release();
   }
@@ -398,7 +407,7 @@ it("retries uncertain acceptance with its frozen request and idempotency key", a
   await user.click(screen.getByRole("button", { name: "生成图片" }));
   const unconfirmed = await screen.findByRole("heading", { name: "尚未确认受理" });
   expect(unconfirmed.closest(".image-studio-generation-frame")).toHaveAttribute("data-tone", "warning");
-  await user.click(await screen.findByRole("button", { name: "重试受理" }));
+  await user.click(await screen.findByRole("button", { name: "核对原请求" }));
   await screen.findByRole("link", { name: "下载图片 1" });
   expect(accepted).toHaveLength(2);
   expect(accepted[1]).toEqual(accepted[0]);
@@ -512,7 +521,7 @@ it("unlocks the preserved draft after a definitive validation rejection", async 
   await screen.findByText("当前参考图不受支持");
   expect(prompt).not.toBeDisabled();
   expect(prompt).toHaveValue("待修正的草稿");
-  expect(screen.queryByRole("button", { name: "重试受理" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "核对原请求" })).not.toBeInTheDocument();
 });
 
 it("requires explicit confirmation when historical capability settings changed", async () => {
@@ -623,7 +632,9 @@ it.each([
   );
   show();
   expect(await screen.findByText(title)).toBeInTheDocument();
-  expect(screen.getByText(errorCode)).toBeInTheDocument();
+  expect(screen.getByText(errorCode)).not.toBeVisible();
+  await userEvent.setup().click(screen.getByText(t("imageStudio.errorDetails")));
+  expect(screen.getByText(errorCode)).toBeVisible();
 });
 
 it("restores only the prompt on an explicit history image selection and still browses imageless batches", async () => {
@@ -685,6 +696,10 @@ it("undoes only the latest effective history prompt replacement, including an em
   await user.click(first);
   await user.click(screen.getByRole("button", { name: "撤销回填" }));
   expect(prompt).toHaveValue("");
+  fireEvent.change(prompt, { target: { value: history.prompt } });
+  await user.click(first);
+  expect(screen.queryByRole("button", { name: "撤销回填" })).not.toBeInTheDocument();
+  fireEvent.change(prompt, { target: { value: "" } });
   expect(screen.queryByRole("button", { name: "撤销回填" })).not.toBeInTheDocument();
   await user.click(first);
   await user.click(second);
@@ -737,26 +752,110 @@ it("changes capability-specific advanced parameters on demand and retains the dr
   expect(screen.getByRole("checkbox", { name: "透明背景" })).toBeChecked();
 });
 
-it("fills the prompt, closes the narrow history drawer and returns focus after selection", async () => {
+it("explains prompt-only loading in narrow history and restores the source after browsing and remounting", async () => {
   vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {} }));
   try {
+    const other = {
+      ...history,
+      id: "other-batch",
+      prompt: "还没有图片的批次",
+      parameters: capability.defaultParameters,
+      references: [],
+      tasks: [{ id: "failed", status: "FAILED", version: 1, results: [], errorCode: null }],
+    };
+    const draftModel = { ...capability, capabilityId: "draft-capability", capabilityVersion: 7, name: "当前草稿模型" };
+    const generate = vi.fn();
     server.use(
-      http.get("/api/v1/image-studio/batches", () => HttpResponse.json({ items: [history], nextCursor: null })),
+      http.get("/api/v1/image-studio/context", () =>
+        HttpResponse.json({
+          projectId: "studio-scope",
+          defaultCapabilityId: draftModel.capabilityId,
+          capabilities: [draftModel, capability],
+        }),
+      ),
+      http.get("/api/v1/image-studio/batches", () => HttpResponse.json({ items: [history, other], nextCursor: null })),
+      http.get(`/api/v1/image-studio/batches/${history.id}`, () => HttpResponse.json(history)),
+      http.post("/api/v1/image-studio/batches", () => {
+        generate();
+        return HttpResponse.json(history);
+      }),
     );
-    show();
+    const firstMount = show();
     const user = userEvent.setup();
-    const prompt = await screen.findByRole("textbox", { name: "提示词" });
+    const composer = within(await screen.findByRole("form", { name: t("imageStudio.parameters") }));
+    const prompt = composer.getByRole("textbox", { name: "提示词" });
+    const cue = composer.getByRole("status", { name: "" });
+    const explanation = t("imageStudio.historyPromptLoaded", { "0": "#HISTORIC" });
+    const restoreLabel = t("imageStudio.restoreHistoryPromptSettings");
+    expect(cue).toBeEmptyDOMElement();
+    expect(prompt).toHaveAttribute("rows", "3");
     await user.type(prompt, "手机草稿");
     const toggle = screen.getByRole("button", { name: "展开历史记录" });
-    await user.click(toggle);
-    const drawer = screen.getByRole("dialog", { name: "历史记录" });
-    await user.click(within(drawer).getByRole("button", { name: /清晨的海边小屋/ }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "历史记录" })).not.toBeInTheDocument());
+    async function selectBatch(name: RegExp) {
+      await user.click(toggle);
+      const drawer = screen.getByRole("dialog", { name: "历史记录" });
+      await user.click(await within(drawer).findByRole("button", { name }));
+      await waitFor(() => expect(drawer).not.toBeInTheDocument());
+      expect(toggle).toHaveFocus();
+    }
+    await selectBatch(/清晨的海边小屋/);
     expect(prompt).toHaveValue(history.prompt);
-    expect(toggle).toHaveFocus();
+    expect(cue).toHaveTextContent(explanation);
+    for (const key of ["model", "ratio", "resolution", "quality", "count"] as const) {
+      const name = t(`imageStudio.${key}`);
+      const control = composer.getByRole("combobox", { name });
+      const label = composer.getByText(name, { selector: ".image-studio-setting-label" });
+      expect(label).toHaveAttribute("for", control.id);
+    }
+    expect(composer.getByRole("combobox", { name: t("imageStudio.model") })).toHaveTextContent(draftModel.name);
+    expect(composer.getByRole("combobox", { name: "分辨率" })).toHaveTextContent("1K");
+    expect(composer.getByRole("combobox", { name: "质量" })).toHaveTextContent(t("imageStudio.quality.medium"));
+    expect(composer.getByRole("button", { name: "生成图片" })).toBeEnabled();
+    expect(composer.queryByRole("button", { name: "移除参考图 1" })).not.toBeInTheDocument();
+    await user.click(composer.getByRole("button", { name: "撤销回填" }));
+    expect(prompt).toHaveValue("手机草稿");
+    expect(cue).toBeEmptyDOMElement();
+
+    await selectBatch(/清晨的海边小屋/);
+    await selectBatch(/还没有图片的批次/);
+    expect(cue).toHaveTextContent(explanation);
+    firstMount.unmount();
+    show();
+    const remounted = within(await screen.findByRole("form", { name: t("imageStudio.parameters") }));
+    expect(remounted.getByRole("status", { name: "" })).toHaveTextContent(explanation);
+    expect(await screen.findByRole("button", { name: "回填参数" })).toBeVisible();
+    await user.click(remounted.getByRole("button", { name: restoreLabel }));
+    expect(await remounted.findByRole("button", { name: "移除参考图 1" })).toBeVisible();
+    expect(remounted.getByRole("combobox", { name: "分辨率" })).toHaveTextContent("2K");
+    expect(remounted.getByRole("combobox", { name: t("imageStudio.model") })).toHaveTextContent(capability.name);
+    expect(remounted.getByRole("combobox", { name: "质量" })).toHaveTextContent(t("imageStudio.quality.high"));
+    expect(remounted.getByRole("combobox", { name: "数量" })).toHaveTextContent("2 张");
+    expect(remounted.getByRole("textbox", { name: "提示词" })).toHaveValue(history.prompt);
+    expect(remounted.getByRole("status", { name: "" })).toBeEmptyDOMElement();
+    expect(remounted.queryByRole("button", { name: "撤销回填" })).not.toBeInTheDocument();
+    expect(generate).not.toHaveBeenCalled();
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+it("does not restore full settings from a cached history row that no longer exists", async () => {
+  server.use(
+    http.get("/api/v1/image-studio/batches", () => HttpResponse.json({ items: [history], nextCursor: null })),
+    http.get(`/api/v1/image-studio/batches/${history.id}`, () => new HttpResponse(null, { status: 404 })),
+  );
+  show();
+  const user = userEvent.setup();
+  const prompt = await screen.findByRole("textbox", { name: "提示词" });
+  await user.type(prompt, "之前的草稿");
+  await user.click(await screen.findByRole("button", { name: /清晨的海边小屋/ }));
+  const restore = screen.getByRole("button", { name: t("imageStudio.restoreHistoryPromptSettings") });
+  await user.click(restore);
+  await waitFor(() => expect(restore).not.toBeInTheDocument());
+  expect(prompt).toHaveValue(history.prompt);
+  expect(screen.getByRole("combobox", { name: "分辨率" })).toHaveTextContent("1K");
+  await user.click(screen.getByRole("button", { name: "撤销回填" }));
+  expect(prompt).toHaveValue("之前的草稿");
 });
 
 it.each(["desktop", "mobile"] as const)("deletes only the history record by default on %s", async viewport => {
@@ -768,7 +867,7 @@ it.each(["desktop", "mobile"] as const)("deletes only the history record by defa
     const generate = vi.fn();
     const draft = {
       prompt: "保留编辑中的草稿",
-      promptBeforeHistory: "之前的草稿",
+      historyPrompt: { previousPrompt: "之前的草稿", sourceBatchId: history.id },
       capabilityId: capability.capabilityId,
       capabilityVersion: capability.capabilityVersion,
       parameters: request.parameters,
@@ -820,7 +919,16 @@ it.each(["desktop", "mobile"] as const)("deletes only the history record by defa
     await waitFor(() => expect(remaining).toHaveFocus());
     expect(row).not.toBeInTheDocument();
     expect(deletions).toEqual([null]);
-    expect(useImageStudioDraftStore.getState().owners["studio-owner"]).toMatchObject(draft);
+    expect(useImageStudioDraftStore.getState().owners["studio-owner"]).toMatchObject({
+      ...draft,
+      historyPrompt: { ...draft.historyPrompt, sourceDeleted: true },
+    });
+    if (viewport === "mobile") await user.keyboard("{Escape}");
+    expect(
+      screen.queryByRole("button", { name: t("imageStudio.restoreHistoryPromptSettings") }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "撤销回填" }));
+    expect(screen.getByRole("textbox", { name: "提示词" })).toHaveValue(draft.historyPrompt.previousPrompt);
     expect(generate).not.toHaveBeenCalled();
   } finally {
     if (viewport === "mobile") vi.unstubAllGlobals();
@@ -1057,6 +1165,7 @@ it("keeps the active version after a reordered detail read and across history br
   await user.click(historyItem());
   expect(screen.getByRole("button", { name: "选择变体 4" })).toHaveAttribute("aria-pressed", "true");
   expect(prompt).toHaveValue(history.prompt);
+  await user.click(screen.getByText(t("imageStudio.errorDetails")));
   expect(screen.getByText("PROVIDER_REJECTED")).toBeVisible();
   await user.click(screen.getByRole("button", { name: "回填参数" }));
   expect(prompt).toHaveValue(history.prompt);
