@@ -23,6 +23,8 @@ class VideoStudioOpenApiTest {
     void studioOperationsKeepOwnerOnlyReadsAndExplicitIdempotentAcceptance() {
         var context = path("/context").path("get");
         var upload = path("/frames").path("post");
+        var referencePath = path("/references/{kind}");
+        var referenceUpload = referencePath.path("post");
         var history = path("/generations").path("get");
         var create = path("/generations").path("post");
         var detailPath = path("/generations/{generationId}");
@@ -30,10 +32,13 @@ class VideoStudioOpenApiTest {
 
         assertResponse(context, "200", "VideoStudioContext");
         assertResponse(upload, "201", "VideoStudioFrame");
+        assertResponse(referenceUpload, "201", "VideoStudioReferenceAsset");
+        assertThat(parameter(referencePath, "kind").at("/schema/$ref").asText())
+                .isEqualTo("#/components/schemas/VideoStudioReferenceKind");
         assertResponse(create, "201", "VideoStudioGeneration");
         assertResponse(history, "200", "VideoStudioGenerationPage");
         assertResponse(detail, "200", "VideoStudioGeneration");
-        for (var operation : new JsonNode[] {context, upload, history, create, detail}) {
+        for (var operation : new JsonNode[] {context, upload, referenceUpload, history, create, detail}) {
             assertThat(operation.at("/responses/401/$ref").asText())
                     .isEqualTo("#/components/responses/Unauthenticated");
         }
@@ -59,7 +64,7 @@ class VideoStudioOpenApiTest {
         assertThat(request.path("required").valueStream().map(JsonNode::asText))
                 .containsExactlyInAnyOrder("capabilityId", "capabilityVersion", "prompt", "mode", "durationSeconds");
         assertThat(schema("VideoStudioMode").path("enum").valueStream().map(JsonNode::asText))
-                .containsExactlyInAnyOrder("TEXT", "START_END");
+                .containsExactlyInAnyOrder("TEXT", "START_END", "GENERAL_REFERENCE");
         assertThat(request.at("/if/properties/mode/const").asText()).isEqualTo("START_END");
         assertThat(request.at("/then/required").valueStream().map(JsonNode::asText))
                 .containsExactly("startFrameVersionId");
@@ -69,8 +74,16 @@ class VideoStudioOpenApiTest {
         }
         assertThat(request.at("/properties/aspectRatio/enum").valueStream().map(JsonNode::asText))
                 .containsExactlyInAnyOrder("AUTO", "16:9", "9:16", "1:1");
-        assertThat(schema("VideoStudioGeneration").at("/properties/aspectRatio/$ref").asText())
+        assertThat(schema("VideoStudioGeneration").at("/properties/aspectRatio/oneOf/0/$ref").asText())
                 .isEqualTo("#/components/schemas/VideoStudioAspectRatio");
+        assertThat(schema("VideoStudioCapability").at("/properties/fields/items/$ref").asText())
+                .isEqualTo("#/components/schemas/CreatorInputField");
+        assertThat(schema("VideoStudioReferenceKind").path("enum").valueStream().map(JsonNode::asText))
+                .containsExactlyInAnyOrder("IMAGE", "VIDEO", "AUDIO");
+        assertThat(request.at("/properties/references/items/$ref").asText())
+                .isEqualTo("#/components/schemas/VideoStudioReferenceInput");
+        assertThat(schema("VideoStudioGeneration").at("/properties/references/items/$ref").asText())
+                .isEqualTo("#/components/schemas/VideoStudioReferenceAsset");
         assertThat(schema("VideoStudioAspectRatio").path("enum").valueStream().map(JsonNode::asText))
                 .containsExactlyInAnyOrder("16:9", "9:16", "1:1");
         assertThat(schema("VideoStudioTask").at("/properties/status/$ref").asText())

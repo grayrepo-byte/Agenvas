@@ -56,8 +56,14 @@ function ArchivedVideo({ result, generation }: { result: VideoResult; generation
   const originalUrl = assetContentUrl(generation.projectId, result.assetId);
   const poster = assetThumbnailUrl(generation.projectId, result.assetId);
   const extension = DOWNLOAD_EXTENSIONS[result.contentType];
-  const [requestedWidth = 16, requestedHeight = 9] = generation.aspectRatio.split(":").map(Number);
-  const ratio = result.width && result.height ? result.width / result.height : requestedWidth / requestedHeight;
+  const ratio =
+    result.width && result.height
+      ? result.width / result.height
+      : generation.aspectRatio === "9:16"
+        ? 9 / 16
+        : generation.aspectRatio === "1:1"
+          ? 1
+          : 16 / 9;
   const title = t("videoStudio.resultTitle");
 
   function reload() {

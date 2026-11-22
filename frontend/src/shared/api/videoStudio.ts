@@ -6,6 +6,7 @@ type Schemas = components["schemas"];
 export type VideoStudioCapability = Schemas["VideoStudioCapability"];
 export type VideoStudioContext = Schemas["VideoStudioContext"];
 export type VideoStudioFrame = Schemas["VideoStudioFrame"];
+export type VideoStudioReferenceAsset = Schemas["VideoStudioReferenceAsset"];
 export type VideoStudioGeneration = Schemas["VideoStudioGeneration"];
 export type VideoStudioGenerationPage = Schemas["VideoStudioGenerationPage"];
 export type VideoStudioCommand = { key: string; request: Schemas["CreateVideoStudioGeneration"] };
@@ -47,7 +48,16 @@ export function uploadVideoStudioFrame(file: File): Promise<VideoStudioFrame> {
   return writeJson(`${BASE}/frames`, { method: "POST", body: form }, t("videoStudio.uploadFailed"));
 }
 
-export async function checkVideoStudioFrame(frame: VideoStudioFrame): Promise<void> {
+export function uploadVideoStudioReference(
+  kind: VideoStudioReferenceAsset["kind"],
+  file: File,
+): Promise<VideoStudioReferenceAsset> {
+  const form = new FormData();
+  form.append("file", file);
+  return writeJson(`${BASE}/references/${kind}`, { method: "POST", body: form }, t("media.runningHub.uploadFailed"));
+}
+
+export async function checkVideoStudioFrame(frame: Pick<VideoStudioFrame, "projectId" | "assetId">): Promise<void> {
   const response = await fetch(assetContentUrl(frame.projectId, frame.assetId), {
     method: "HEAD",
     credentials: "same-origin",

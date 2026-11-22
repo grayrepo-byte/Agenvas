@@ -3,7 +3,15 @@ import type { VideoStudioCommand, VideoStudioFrame, VideoStudioGeneration } from
 
 export type VideoStudioSettings = Pick<
   VideoStudioGeneration,
-  "capabilityId" | "capabilityVersion" | "mode" | "aspectRatio" | "startFrame" | "endFrame"
+  | "capabilityId"
+  | "capabilityVersion"
+  | "mode"
+  | "aspectRatio"
+  | "videoResolution"
+  | "dynamicValues"
+  | "references"
+  | "startFrame"
+  | "endFrame"
 > & { duration: string };
 export type FrameSlot = "startFrame" | "endFrame";
 

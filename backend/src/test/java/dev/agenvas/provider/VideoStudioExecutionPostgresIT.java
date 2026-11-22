@@ -204,7 +204,8 @@ class VideoStudioExecutionPostgresIT {
         var capability = mockCapability();
         var generation = studio.accept(fixtureOwner,
                 new VideoStudioService.Command(capability.capabilityId(), capability.capabilityVersion(),
-                        "Animate the synthetic scene", VideoInputMode.START_END, 4, "9:16", start.versionId(), null),
+                        "Animate the synthetic scene", VideoInputMode.START_END, 4, "9:16", start.versionId(), null,
+                        List.of(), null, mapper.createObjectNode()),
                 UUID.randomUUID().toString());
         UUID taskId = generation.task().id();
         var frozen = (ObjectNode) tasks.get(fixtureOwner, generation.projectId(), taskId).input().deepCopy();
@@ -448,7 +449,8 @@ class VideoStudioExecutionPostgresIT {
     private GenerationView accept(VideoStudioService.Capability capability, VideoInputMode mode,
             String ratio, UUID start, UUID end) {
         return studio.accept(owner, new VideoStudioService.Command(capability.capabilityId(), capability.capabilityVersion(),
-                "Animate the synthetic scene", mode, 4, ratio, start, end), UUID.randomUUID().toString());
+                "Animate the synthetic scene", mode, 4, ratio, start, end, List.of(), null, mapper.createObjectNode()),
+                UUID.randomUUID().toString());
     }
 
     private Task task(GenerationView generation) {

@@ -137,7 +137,7 @@ public class VideoStudioGenerationRecord extends UpdatableRecordImpl<VideoStudio
 
     /**
      * Setter for <code>public.video_studio_generation.request_json</code>.
-     * Versioned frozen capability, prompt, parameters and exact frame
+     * Versioned frozen capability, prompt, creator parameters and exact media
      * references
      */
     public void setRequestJson(JSONB value) {
@@ -146,7 +146,7 @@ public class VideoStudioGenerationRecord extends UpdatableRecordImpl<VideoStudio
 
     /**
      * Getter for <code>public.video_studio_generation.request_json</code>.
-     * Versioned frozen capability, prompt, parameters and exact frame
+     * Versioned frozen capability, prompt, creator parameters and exact media
      * references
      */
     public JSONB getRequestJson() {

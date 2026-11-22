@@ -12,6 +12,7 @@ import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.MediaDraft;
+import dev.agenvas.artifact.domain.VideoGenerationParameters;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.MediaExecutionSurface;
@@ -20,6 +21,7 @@ import dev.agenvas.provider.application.ArchivedMediaRecovery;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.application.PinnedMediaPublications;
+import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.MediaAdapterRegistry.PublicDiagnostic;
 import dev.agenvas.provider.domain.ProviderResultManifest;
 import dev.agenvas.provider.domain.RunningHubDefinition;
@@ -34,6 +36,7 @@ import java.time.Instant;
 import java.util.regex.Pattern;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import org.slf4j.Logger;
@@ -997,7 +1000,7 @@ public class TaskService {
                         || hasNode || task.runId() != null || input.has("runId") || input.has("compositionRunId")
                         || input.has("agentLocalOrigin") || input.has(Task.APPROVAL_INPUT_PROPERTY)
                         || input.has("videoOperation") || input.has("videoComposition")
-                        || input.has(VideoOperation.SILENT_VIDEO_TARGET) || input.has("providerProtocol")
+                        || input.has(VideoOperation.SILENT_VIDEO_TARGET)
                         || !("video-studio:" + generation).equals(task.stepKey())
                         || !target.taskId().equals(task.id()) || !target.projectId().equals(task.projectId())
                         || !target.artifactId().toString().equals(input.path("artifactId").asText())
@@ -1020,36 +1023,92 @@ public class TaskService {
         }
     }
 
+    private static final Set<String> STUDIO_REFERENCE_FIELDS = Set.of("assetId", "artifactId", "versionId", "role",
+            "order");
+    private static final Set<String> STUDIO_RELAY_REFERENCE_FIELDS = Set.of("assetId", "artifactId", "versionId",
+            "role", "order", "relayProfileId");
+
     private static boolean validVideoStudioMediaInput(JsonNode input) {
         JsonNode media = input.path("mediaInput");
         JsonNode images = media.path("images");
+        JsonNode videos = media.path("videos");
+        JsonNode audios = media.path("audios");
         JsonNode seconds = input.path("durationSeconds");
-        String ratio = media.path("providerParameters").path("aspectRatio").asText();
-        if (!input.path("schemaVersion").isIntegralNumber() || input.path("schemaVersion").intValue() != 7
-                || !seconds.isIntegralNumber() || !seconds.canConvertToInt()
-                || seconds.intValue() < 1 || seconds.intValue() > 30 || !seconds.equals(media.path("durationSeconds"))
-                || !List.of("16:9", "9:16", "1:1").contains(ratio)
-                || !ratio.equals(media.path("parameters").path("aspectRatio").asText())
-                || !images.isArray() || !media.path("audios").isArray() || !media.path("audios").isEmpty()
-                || !media.path("videos").isArray() || !media.path("videos").isEmpty()) {
+        JsonNode mediaSeconds = media.path("durationSeconds");
+        String workflow = input.path("workflowVersion").asText();
+        boolean originalAdapters = workflow.startsWith("MOCK_VIDEO:")
+                || workflow.startsWith(MediaAdapterRegistry.SEEDANCE_2 + ":");
+        boolean hasDuration = input.hasNonNull("durationSeconds");
+        if (!input.path("schemaVersion").isIntegralNumber() || !input.path("schemaVersion").canConvertToInt()
+                || input.path("schemaVersion").intValue() != 7
+                || (hasDuration
+                        ? !seconds.isIntegralNumber() || !seconds.canConvertToInt()
+                                || seconds.intValue() < 1 || seconds.intValue() > (originalAdapters ? 30
+                                        : MediaAdapterRegistry.RUNNINGHUB_MAX_VIDEO_SECONDS)
+                                || !seconds.equals(mediaSeconds)
+                        : originalAdapters || media.hasNonNull("durationSeconds"))
+                || !media.path("parameters").isObject()
+                || !images.isArray() || !videos.isArray() || !audios.isArray()
+                || media.has("canvasItemId") || media.has("sourceCanvasItemId"))
             return false;
-        }
+        JsonNode configuredRatio = media.path("providerParameters").path("aspectRatio");
+        if ((originalAdapters || !configuredRatio.isMissingNode())
+                && (!configuredRatio.isTextual()
+                        || !VideoGenerationParameters.ASPECT_RATIOS.contains(configuredRatio.asText())
+                        || VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(configuredRatio.asText())
+                        || !configuredRatio.equals(media.path("parameters").path("aspectRatio"))))
+            return false;
         return switch (media.path("mode").asText()) {
-            case "TEXT" -> images.isEmpty();
-            case "START_END" -> (images.size() == 1 || images.size() == 2)
-                    && validVideoStudioFrame(images.get(0), MediaDraft.InputRole.START_FRAME, 0)
-                    && (images.size() == 1 || validVideoStudioFrame(images.get(1), MediaDraft.InputRole.END_FRAME, 1));
+            case "TEXT" -> images.isEmpty() && videos.isEmpty() && audios.isEmpty();
+            case "START_END" -> videos.isEmpty() && audios.isEmpty() && (images.size() == 1 || images.size() == 2)
+                    && validStudioReference(images.get(0), MediaDraft.InputRole.START_FRAME, 0, false)
+                    && (images.size() == 1
+                            || validStudioReference(images.get(1), MediaDraft.InputRole.END_FRAME, 1, false));
+            case "GENERAL_REFERENCE" -> (!images.isEmpty() || !videos.isEmpty() || !audios.isEmpty()
+                    || input.hasNonNull("providerProtocol"))
+                    && validStudioReferences(images, MediaDraft.InputRole.REFERENCE)
+                    && validStudioReferences(videos, MediaDraft.InputRole.VIDEO_REFERENCE)
+                    && validStudioReferences(audios, MediaDraft.InputRole.AUDIO_REFERENCE);
             default -> false;
         };
     }
 
-    private static boolean validVideoStudioFrame(JsonNode image, MediaDraft.InputRole role, int order) {
-        return image.propertyNames().equals(java.util.Set.of("assetId", "artifactId", "versionId", "role", "order"))
-                && role.name().equals(image.path("role").asText())
-                && image.path("order").isIntegralNumber() && image.path("order").canConvertToInt()
-                && image.path("order").intValue() == order
-                && image.path("assetId").isTextual() && image.path("artifactId").isTextual()
-                && image.path("versionId").isTextual();
+    private static boolean validStudioReferences(JsonNode group, MediaDraft.InputRole role) {
+        Set<String> versions = new java.util.HashSet<>();
+        for (int index = 0; index < group.size(); index++) {
+            JsonNode item = group.get(index);
+            if (!validStudioReference(item, role, index, true) || !versions.add(item.path("versionId").asText()))
+                return false;
+        }
+        return true;
+    }
+
+    private static boolean validStudioReference(JsonNode item, MediaDraft.InputRole role, int order,
+            boolean permitsRelay) {
+        return (item.propertyNames().equals(STUDIO_REFERENCE_FIELDS)
+                || permitsRelay && item.propertyNames().equals(STUDIO_RELAY_REFERENCE_FIELDS)
+                        && (item.path("relayProfileId").isNull() || isCanonicalUuid(item.path("relayProfileId"))))
+                && role.name().equals(item.path("role").asText())
+                && item.path("order").isIntegralNumber() && item.path("order").canConvertToInt()
+                && item.path("order").intValue() == order
+                && isCanonicalUuid(item.path("assetId")) && isCanonicalUuid(item.path("artifactId"))
+                && isCanonicalUuid(item.path("versionId"));
+    }
+
+    private static boolean isCanonicalUuid(JsonNode input) {
+        return input.isTextual() && UUID.fromString(input.asText()).toString().equals(input.asText());
+    }
+
+    private boolean studioVersionsCurrent(UUID owner, UUID project, JsonNode group, Artifact.Kind kind) {
+        for (JsonNode item : group) {
+            var version = artifacts.requireMediaVersionForTask(owner, project,
+                    UUID.fromString(item.path("versionId").asText()), kind);
+            if (!version.artifactId().toString().equals(item.path("artifactId").asText())
+                    || !version.content().path("assetId").asText().equals(item.path("assetId").asText())
+                    || artifacts.get(owner, project, version.artifactId()).artifact().archivedAt() != null)
+                return false;
+        }
+        return true;
     }
 
     private static ApiProblemException staleMediaInput() {
@@ -1062,18 +1121,27 @@ public class TaskService {
     private ArrayNode archiveStudioAdditionalResults(UUID ownerId, Task lease,
             TaskRepository.ArtifactTarget target, List<ArchivedProviderResult> results) {
         ArrayNode output = objectMapper.createArrayNode();
+        boolean videoStudio = MediaExecutionSurface.isVideoStudio(lease);
         for (ArchivedProviderResult extra : results) {
             if (extra.primary())
                 continue;
-            if (extra.kind() != (MediaExecutionSurface.isVideoStudio(lease) ? Artifact.Kind.VIDEO : Artifact.Kind.IMAGE)
+            if (!videoStudio && extra.kind() != Artifact.Kind.IMAGE
                     || !lease.id().toString().equals(extra.content().path("sourceTaskId").asText())) {
                 throw validation(ApiMessage.of("api.task-service.extra-results-sourcetaskid-is-invalid"));
             }
-            var version = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(), target.artifactId(),
+            // A workflow can return companion audio/images; archive them privately without making canvas nodes.
+            var companion = videoStudio && extra.kind() != Artifact.Kind.VIDEO
+                    ? artifacts.createTaskMediaIdentityWithinChange(ownerId, lease.projectId(), extra.kind(),
+                            "Video Studio " + extra.kind().name().toLowerCase(java.util.Locale.ROOT) + " output")
+                    : null;
+            UUID artifactId = companion == null ? target.artifactId() : companion.id();
+            var version = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(), artifactId,
                     null, target.expectedCurrentVersionId(), target.expectedArtifactVersion(), extra.content(),
                     lease.input().path("mediaInput"), false);
-            output.addObject().put("ordinal", extra.ordinal()).put("artifactId", target.artifactId().toString())
+            ObjectNode entry = output.addObject().put("ordinal", extra.ordinal()).put("artifactId", artifactId.toString())
                     .put("artifactVersionId", version.versionId().toString()).put("selected", false);
+            if (companion != null)
+                entry.put("kind", extra.kind().name());
         }
         return output;
     }
@@ -1481,9 +1549,9 @@ public class TaskService {
                 if (!sameVideoStudioInput(lease, tasks.findById(lease.id()).orElseThrow(this::notFound)))
                     throw staleMediaInput();
                 JsonNode media = lease.input().path("mediaInput");
-                if (binding == null
-                        || !List.of("MOCK_VIDEO", dev.agenvas.provider.domain.MediaAdapterRegistry.SEEDANCE_2)
-                                .contains(binding.adapterId())
+                if (binding == null || !tasks.mediaBinding(lease.id()).filter(binding::equals).isPresent()
+                        || !java.util.Objects.equals(DirectMediaTaskService.providerProtocol(binding.adapterId()),
+                                lease.input().path("providerProtocol").asText(null))
                         || !binding.capabilityId().toString().equals(media.path("capabilityId").asText())
                         || !media.path("capabilityVersion").isIntegralNumber()
                         || !media.path("capabilityVersion").canConvertToInt()
@@ -1715,26 +1783,21 @@ public class TaskService {
             boolean video = MediaExecutionSurface.isVideoStudio(task);
             try {
                 JsonNode frozen = input.path("mediaInput");
+                if (video)
+                    return studioVersionsCurrent(ownerId, task.projectId(), frozen.path("images"), Artifact.Kind.IMAGE)
+                            && studioVersionsCurrent(ownerId, task.projectId(), frozen.path("videos"), Artifact.Kind.VIDEO)
+                            && studioVersionsCurrent(ownerId, task.projectId(), frozen.path("audios"), Artifact.Kind.AUDIO);
                 JsonNode images = frozen.path("images");
                 if (!images.isArray() || !frozen.path("audios").isArray() || !frozen.path("videos").isArray()
                         || !frozen.path("audios").isEmpty() || !frozen.path("videos").isEmpty())
                     return false;
                 int order = 0;
                 for (JsonNode image : images) {
-                    String role = video
-                            ? (order == 0 ? MediaDraft.InputRole.START_FRAME : MediaDraft.InputRole.END_FRAME).name()
-                            : MediaDraft.InputRole.REFERENCE.name();
-                    var version = artifacts.requireMediaVersionForTask(ownerId, task.projectId(),
-                            UUID.fromString(image.path("versionId").asText()), Artifact.Kind.IMAGE);
-                    if (!version.artifactId().toString().equals(image.path("artifactId").asText())
-                            || !version.content().path("assetId").asText().equals(image.path("assetId").asText())
-                            || !role.equals(image.path("role").asText())
-                            || image.path("order").asInt(-1) != order++
-                            || artifacts.get(ownerId, task.projectId(), version.artifactId()).artifact()
-                                    .archivedAt() != null)
+                    if (!MediaDraft.InputRole.REFERENCE.name().equals(image.path("role").asText())
+                            || image.path("order").asInt(-1) != order++)
                         return false;
                 }
-                return true;
+                return studioVersionsCurrent(ownerId, task.projectId(), images, Artifact.Kind.IMAGE);
             } catch (ApiProblemException | IllegalArgumentException unavailable) {
                 return false;
             }

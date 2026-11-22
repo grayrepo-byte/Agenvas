@@ -7250,7 +7250,7 @@ paths:
     get:
       operationId: getVideoStudioContext
       summary: 读取当前所有者的私有视频工作台和可用能力
-      description: 不要求选择项目或创建画布节点。只提供已发布且启用的 Mock 和 Seedance 2.0 能力；没有可用能力时返回空目录。
+      description: 复用画布已发布且启用的视频生成能力、连接和输入约束。不要求选择项目或创建画布节点；没有兼容能力时返回空目录。
       tags: [VideoStudio]
       responses:
         "200":
@@ -7284,6 +7284,49 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/VideoStudioFrame"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "413":
+          description: 文件超过上传大小限制
+          content:
+            application/problem+json:
+              schema: {$ref: "#/components/schemas/Problem"}
+        "415":
+          description: 请求 Content-Type 不受支持
+          content:
+            application/problem+json:
+              schema: {$ref: "#/components/schemas/Problem"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+        "503": {$ref: "#/components/responses/ObjectStorageFailure"}
+  /api/v1/video-studio/references/{kind}:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: kind
+        in: path
+        required: true
+        schema: {$ref: "#/components/schemas/VideoStudioReferenceKind"}
+    post:
+      operationId: uploadVideoStudioReference
+      summary: 上传并固定私有参考素材版本
+      description: 单文件上传，只接受实际可解码的静态图片、视频或音频。不接受外部 URL 或跨作用域引用，不创建画布节点。
+      tags: [VideoStudio]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        "201":
+          description: 当前所有者的私有参考素材及固定版本
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VideoStudioReferenceAsset"}
         "400": {$ref: "#/components/responses/ValidationError"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -7390,7 +7433,7 @@ components:
   schemas:
     VideoStudioMode:
       type: string
-      enum: [TEXT, START_END]
+      enum: [TEXT, START_END, GENERAL_REFERENCE]
     VideoStudioAspectRatio:
       type: string
       enum: ["16:9", "9:16", "1:1"]
@@ -7405,21 +7448,40 @@ components:
     VideoStudioCapability:
       type: object
       additionalProperties: false
-      required: [capabilityId, capabilityVersion, name, connectionName, adapterId, modes, defaultMode, supportsEndFrame, minDurationSeconds, maxDurationSeconds, defaultDurationSeconds, aspectRatios, defaultAspectRatio]
+      required: [capabilityId, capabilityVersion, name, connectionName, adapterId, modes, defaultMode, supportsEndFrame, requiresEndFrame, minDurationSeconds, maxDurationSeconds, defaultDurationSeconds, aspectRatios, defaultAspectRatio, videoResolutions, defaultVideoResolution, referenceLimits, fields, defaultDynamicValues]
       properties:
         capabilityId: {type: string, format: uuid}
         capabilityVersion: {type: integer, minimum: 1}
         name: {type: string}
         connectionName: {type: string}
-        adapterId: {type: string, enum: [MOCK_VIDEO, ARK_SEEDANCE_2_I2V]}
+        adapterId: {type: string, minLength: 1}
         modes: {type: array, minItems: 1, uniqueItems: true, items: {$ref: "#/components/schemas/VideoStudioMode"}}
         defaultMode: {$ref: "#/components/schemas/VideoStudioMode"}
         supportsEndFrame: {type: boolean}
-        minDurationSeconds: {type: integer, minimum: 1}
-        maxDurationSeconds: {type: integer, minimum: 1}
-        defaultDurationSeconds: {type: integer, minimum: 1}
-        aspectRatios: {type: array, minItems: 1, uniqueItems: true, items: {$ref: "#/components/schemas/VideoStudioAspectRatio"}}
-        defaultAspectRatio: {$ref: "#/components/schemas/VideoStudioAspectRatio"}
+        requiresEndFrame: {type: boolean}
+        minDurationSeconds: {type: [integer, "null"], minimum: 1}
+        maxDurationSeconds: {type: [integer, "null"], minimum: 1}
+        defaultDurationSeconds: {type: [integer, "null"], minimum: 1}
+        aspectRatios: {type: array, uniqueItems: true, items: {$ref: "#/components/schemas/VideoStudioAspectRatio"}}
+        defaultAspectRatio:
+          oneOf:
+            - {$ref: "#/components/schemas/VideoStudioAspectRatio"}
+            - {type: "null"}
+        videoResolutions: {type: array, uniqueItems: true, items: {type: string}}
+        defaultVideoResolution: {type: [string, "null"]}
+        referenceLimits:
+          type: object
+          additionalProperties: false
+          required: [image, video, audio]
+          properties:
+            image: {type: integer, minimum: 0}
+            video: {type: integer, minimum: 0}
+            audio: {type: integer, minimum: 0}
+        fields:
+          description: 已发布协议的创作者字段，不含工作流图、接口地址或凭证；普通模型为 null。
+          type: [array, "null"]
+          items: {$ref: "#/components/schemas/CreatorInputField"}
+        defaultDynamicValues: {$ref: "#/components/schemas/VideoStudioDynamicValues"}
     VideoStudioFrame:
       type: object
       additionalProperties: false
@@ -7431,23 +7493,56 @@ components:
         projectId: {type: string, format: uuid}
         width: {type: integer, minimum: 1}
         height: {type: integer, minimum: 1}
+    VideoStudioReferenceKind:
+      type: string
+      enum: [IMAGE, VIDEO, AUDIO]
+    VideoStudioReferenceInput:
+      type: object
+      additionalProperties: false
+      required: [kind, versionId]
+      properties:
+        kind: {$ref: "#/components/schemas/VideoStudioReferenceKind"}
+        versionId: {type: string, format: uuid}
+        fieldKey: {type: [string, "null"], pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$", description: 已发布工作流的具名素材槽；普通全能参考留空}
+    VideoStudioReferenceAsset:
+      type: object
+      additionalProperties: false
+      required: [artifactId, versionId, assetId, projectId, kind, fieldKey, width, height, durationMs, contentType]
+      properties:
+        artifactId: {type: string, format: uuid}
+        versionId: {type: string, format: uuid}
+        assetId: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        kind: {$ref: "#/components/schemas/VideoStudioReferenceKind"}
+        fieldKey: {type: [string, "null"]}
+        width: {type: [integer, "null"], minimum: 1}
+        height: {type: [integer, "null"], minimum: 1}
+        durationMs: {type: [integer, "null"], minimum: 1}
+        contentType: {type: string}
+    VideoStudioDynamicValues:
+      type: object
+      additionalProperties: {$ref: "#/components/schemas/RunningHubScalar"}
+      description: 已发布协议中可编辑的非素材参数；提示词、时长、素材版本通过各自字段提供。
     CreateVideoStudioGeneration:
       type: object
       additionalProperties: false
       required: [capabilityId, capabilityVersion, prompt, mode, durationSeconds]
-      description: TEXT 不接受帧；START_END 必须指定首帧，仅能力支持时可指定尾帧。帧必须是当前所有者工作台的固定图片版本。
+      description: TEXT 不接受素材；START_END 使用固定静态帧，尾帧按能力约束；GENERAL_REFERENCE 使用有序私有参考版本，具名工作流必须指定槽位。
       properties:
         capabilityId: {type: string, format: uuid}
         capabilityVersion: {type: integer, minimum: 1}
-        prompt: {type: string, minLength: 1, maxLength: 8000, pattern: '\S'}
+        prompt: {type: string, maxLength: 8000, description: 按发布的能力校验；没有必填提示词的工作流可传空字符串}
         mode: {$ref: "#/components/schemas/VideoStudioMode"}
-        durationSeconds: {type: integer, minimum: 1, description: 必须在所选能力的有效时长范围内}
+        durationSeconds: {type: [integer, "null"], minimum: 1, description: 整数秒；不映射时长或由供应商决定时传 null}
         aspectRatio:
           type: string
           enum: [AUTO, "16:9", "9:16", "1:1"]
           description: 缺省使用能力默认值；AUTO 固定为 16:9，不继承画布设置。
         startFrameVersionId: {type: [string, "null"], format: uuid, description: START_FRAME 角色}
         endFrameVersionId: {type: [string, "null"], format: uuid, description: 可选的 END_FRAME 角色}
+        references: {type: array, maxItems: 14, items: {$ref: "#/components/schemas/VideoStudioReferenceInput"}}
+        videoResolution: {type: string, description: 普通模型在已发布档位中选择}
+        dynamicValues: {$ref: "#/components/schemas/VideoStudioDynamicValues"}
       if:
         properties:
           mode: {const: START_END}
@@ -7462,7 +7557,7 @@ components:
     VideoStudioGeneration:
       type: object
       additionalProperties: false
-      required: [id, projectId, capabilityId, capabilityVersion, prompt, mode, durationSeconds, aspectRatio, startFrame, endFrame, createdAt, task]
+      required: [id, projectId, capabilityId, capabilityVersion, prompt, mode, durationSeconds, aspectRatio, startFrame, endFrame, references, videoResolution, dynamicValues, createdAt, task]
       properties:
         id: {type: string, format: uuid}
         projectId: {type: string, format: uuid}
@@ -7470,8 +7565,14 @@ components:
         capabilityVersion: {type: integer, minimum: 1}
         prompt: {type: string}
         mode: {$ref: "#/components/schemas/VideoStudioMode"}
-        durationSeconds: {type: integer, minimum: 1, description: 冻结的请求秒数，不是成品探测时长}
-        aspectRatio: {$ref: "#/components/schemas/VideoStudioAspectRatio"}
+        durationSeconds: {type: [integer, "null"], minimum: 1, description: 冻结的有效秒数，不是成品探测时长}
+        aspectRatio:
+          oneOf:
+            - {$ref: "#/components/schemas/VideoStudioAspectRatio"}
+            - {type: "null"}
+        videoResolution: {type: [string, "null"]}
+        dynamicValues: {$ref: "#/components/schemas/VideoStudioDynamicValues"}
+        references: {type: array, maxItems: 14, items: {$ref: "#/components/schemas/VideoStudioReferenceAsset"}}
         startFrame:
           oneOf:
             - {$ref: "#/components/schemas/VideoStudioFrame"}

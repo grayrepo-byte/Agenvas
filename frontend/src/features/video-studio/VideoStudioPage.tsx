@@ -7,7 +7,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useId, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
+import { useId, useRef, useState, useSyncExternalStore, type FormEvent, type MouseEventHandler } from "react";
 import { Link } from "react-router";
 import { ApiError, assetContentUrl, assetThumbnailUrl, getCurrentUser } from "../../shared/api/client";
 import {
@@ -17,13 +17,16 @@ import {
   getVideoStudioGeneration,
   listVideoStudioGenerations,
   uploadVideoStudioFrame,
+  uploadVideoStudioReference,
   type VideoStudioCapability,
   type VideoStudioCommand,
   type VideoStudioFrame,
   type VideoStudioGeneration,
+  type VideoStudioReferenceAsset,
 } from "../../shared/api/videoStudio";
 import { formatDate, t, useLocale, type MessageKey } from "../../shared/i18n";
 import { createCommandKey } from "../../shared/lib/clientId";
+import { MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { BrandLogo } from "../../shared/ui/BrandLogo";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { Notice } from "../../shared/ui/PagePrimitives";
@@ -43,6 +46,14 @@ import {
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
 import { Textarea } from "../../shared/ui/primitives/textarea";
+import { RunningHubForm } from "../canvas/RunningHubForm";
+import { workflowFieldLabel } from "../canvas/workflowFieldPresentation";
+import {
+  evaluateWorkflowFields,
+  isWorkflowMediaField,
+  workflowValidationErrors,
+  type WorkflowValue,
+} from "../canvas/workflowFields";
 import {
   studioFrames,
   useVideoStudioDraft,
@@ -57,7 +68,21 @@ import "./VideoStudioPage.css";
 const COMPACT_LAYOUT = "(max-width: 900px)";
 const POLL_MS = 1_500;
 const MAX_PROMPT_LENGTH = 8_000;
-const MODE_LABELS = { TEXT: "videoStudio.textMode", START_END: "videoStudio.frameMode" } as const;
+const MODE_LABELS = {
+  TEXT: "videoStudio.textMode",
+  START_END: "videoStudio.frameMode",
+  GENERAL_REFERENCE: "common.mixedReference",
+} as const;
+const REFERENCE_KINDS = ["IMAGE", "VIDEO", "AUDIO"] as const;
+const REFERENCE_LABELS = {
+  IMAGE: "templates.numberedImage",
+  VIDEO: "videoStudio.numberedVideo",
+  AUDIO: "videoStudio.numberedAudio",
+} as const;
+const KIND_LABELS = { IMAGE: "common.image", VIDEO: "common.video", AUDIO: "common.audio" } as const;
+const MAX_REFERENCES = 14;
+type Reference = VideoStudioGeneration["references"][number];
+const LIMIT_KEYS = { IMAGE: "image", VIDEO: "video", AUDIO: "audio" } as const;
 const FRAME_LABELS = { startFrame: "videoStudio.startFrame", endFrame: "videoStudio.endFrame" } as const;
 const STATUS_LABELS = {
   READY: "imageStudio.status.ready",
@@ -99,19 +124,91 @@ function defaults(model: VideoStudioCapability): VideoStudioSettings {
     capabilityVersion: model.capabilityVersion,
     mode: model.defaultMode,
     aspectRatio: model.defaultAspectRatio,
-    duration: String(model.defaultDurationSeconds),
+    duration: model.defaultDurationSeconds?.toString() ?? "",
+    videoResolution: model.defaultVideoResolution,
+    dynamicValues: model.defaultDynamicValues,
+    references: [],
     startFrame: null,
     endFrame: null,
   };
 }
 
+function durationOptions(model: VideoStudioCapability) {
+  const { minDurationSeconds: min, maxDurationSeconds: max } = model;
+  if (min === null || max === null) return [];
+  const options = model.fields?.find(field => field.source === "DURATION_SECONDS" && field.type === "SELECT")?.options;
+  return (
+    options?.filter(option => typeof option.value === "number" && option.value >= min && option.value <= max) ?? []
+  );
+}
+
 function validDuration(model: VideoStudioCapability, duration: string) {
+  const { minDurationSeconds: min, maxDurationSeconds: max } = model;
+  if (min === null || max === null) return true;
   const seconds = Number(duration);
-  return /^\d+$/.test(duration) && seconds >= model.minDurationSeconds && seconds <= model.maxDurationSeconds;
+  const options = durationOptions(model);
+  return (
+    /^\d+$/.test(duration) &&
+    seconds >= min &&
+    seconds <= max &&
+    (!options.length || options.some(option => option.value === seconds))
+  );
 }
 
 function allowsFrame(model: VideoStudioCapability, mode: VideoStudioSettings["mode"], slot: FrameSlot) {
   return mode === "START_END" && model.modes.includes(mode) && (slot === "startFrame" || model.supportsEndFrame);
+}
+
+function workflowValues(settings: VideoStudioSettings) {
+  return {
+    ...settings.dynamicValues,
+    ...Object.fromEntries(
+      settings.references.flatMap(ref => (ref.fieldKey ? [[ref.fieldKey, ref.versionId] as const] : [])),
+    ),
+  };
+}
+
+function durationValue(settings: VideoStudioSettings) {
+  return settings.duration === "" ? null : Number(settings.duration);
+}
+
+function referenceLabels(references: Reference[], fields?: VideoStudioCapability["fields"]) {
+  const counts = { IMAGE: 0, VIDEO: 0, AUDIO: 0 };
+  return references.map(ref => {
+    const index = ++counts[ref.kind];
+    if (!ref.fieldKey) return t(REFERENCE_LABELS[ref.kind], { 0: index });
+    const field = fields?.find(item => item.key === ref.fieldKey);
+    return field ? workflowFieldLabel(field) : ref.fieldKey;
+  });
+}
+
+function compatibleReferences(model: VideoStudioCapability, settings: VideoStudioSettings, prompt: string) {
+  const fields = model.fields
+    ? evaluateWorkflowFields(
+        { fields: model.fields },
+        workflowValues(settings),
+        prompt,
+        model.minDurationSeconds === null ? null : durationValue(settings),
+      ).activeFields
+    : null;
+  const counts = { IMAGE: 0, VIDEO: 0, AUDIO: 0 };
+  const limits = model.referenceLimits;
+  const references: Reference[] = [];
+  for (const ref of settings.references) {
+    const matchesField =
+      settings.mode === "GENERAL_REFERENCE" &&
+      fields?.some(field => field.key === ref.fieldKey && field.type === ref.kind && field.source === "PARAMETER");
+    const matchesStandardMode = !fields && settings.mode === "GENERAL_REFERENCE" && !ref.fieldKey;
+    if (
+      (matchesField || matchesStandardMode) &&
+      references.length < MAX_REFERENCES &&
+      counts[ref.kind] < limits[LIMIT_KEYS[ref.kind]]
+    ) {
+      counts[ref.kind]++;
+      references.push(ref);
+    }
+  }
+  return references;
 }
 
 function contextOptions(ownerId: string) {
@@ -144,8 +241,8 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
   const narrow = useSyncExternalStore(subscribeLayout, isCompact);
   const [railOpen, setRailOpen] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [change, setChange] = useState<{ next: VideoStudioSettings; incompatible: MessageKey[] } | null>(null);
-  const changeTrigger = useRef<"mode" | "model">(null);
+  const [change, setChange] = useState<{ patch: Partial<VideoStudioDraft>; incompatible: string[] } | null>(null);
+  const changeTrigger = useRef<string>(null);
   const cancelChange = useRef<HTMLButtonElement>(null);
   const [restoreError, setRestoreError] = useState<string>();
   const [uploadError, setUploadError] = useState<string>();
@@ -187,9 +284,18 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
   const settings = draft.settings ?? (preferred ? defaults(preferred) : null);
   const model = models.find(item => settings && modelKey(item) === modelKey(settings));
   const stale = !!settings && !model;
-  const invalidDuration = !!(model && settings && !validDuration(model, settings.duration));
   const invalidMode = !!(model && settings && !model.modes.includes(settings.mode));
-  const invalidRatio = !!(model && settings && !model.aspectRatios.includes(settings.aspectRatio));
+  const invalidRatio = !!(
+    model?.aspectRatios.length &&
+    settings &&
+    settings.aspectRatio &&
+    !model.aspectRatios.includes(settings.aspectRatio)
+  );
+  const invalidResolution = !!(
+    model?.videoResolutions.length &&
+    settings?.videoResolution &&
+    !model.videoResolutions.includes(settings.videoResolution)
+  );
   const acceptanceKey = ["video-studio", ownerId, "accept"] as const;
   const accepting = useIsMutating({ mutationKey: acceptanceKey, exact: true }) > 0;
   const locked = accepting || !!draft.command;
@@ -219,20 +325,83 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
     },
   });
   const upload = useMutation({ mutationFn: uploadVideoStudioFrame, retry: false });
+  const referenceUploadKey = ["video-studio", ownerId, "upload-reference"] as const;
+  const referenceUpload = useMutation({
+    mutationKey: referenceUploadKey,
+    mutationFn: ({ kind, file }: { kind: VideoStudioReferenceAsset["kind"]; file: File }) =>
+      uploadVideoStudioReference(kind, file),
+    retry: false,
+  });
+  const uploadingReference = useIsMutating({ mutationKey: referenceUploadKey, exact: true }) > 0;
+  const uploading = upload.isPending || uploadingReference;
   const restore = useMutation({
     mutationFn: async (id: string) => {
-      const [generation] = await Promise.all([
+      const [generation, catalog] = await Promise.all([
         getVideoStudioGeneration(id),
         queryClient.fetchQuery({ ...contextOptions(ownerId), staleTime: 0 }),
       ]);
-      const frames = studioFrames(generation);
-      const checks = await Promise.allSettled(frames.map(([, frame]) => frame && checkVideoStudioFrame(frame)));
-      return { generation, unreadable: frames.filter((_, index) => checks[index]?.status === "rejected") };
+      if (generation.projectId !== catalog.projectId) throw new Error(t("videoStudio.restoreFailed"));
+      const savedModel = catalog.capabilities.find(
+        item =>
+          item.capabilityId === generation.capabilityId && item.capabilityVersion === generation.capabilityVersion,
+      );
+      const frames = studioFrames(generation).flatMap(([slot, frame]) =>
+        frame ? [{ asset: frame, label: t(FRAME_LABELS[slot]) }] : [],
+      );
+      const labels = referenceLabels(generation.references, savedModel?.fields);
+      const assets = [...frames, ...generation.references.map((asset, index) => ({ asset, label: labels[index]! }))];
+      const checks = await Promise.allSettled(
+        assets.map(async ({ asset }) => {
+          if (asset.projectId !== catalog.projectId) throw new Error(t("videoStudio.restoreFailed"));
+          return checkVideoStudioFrame(asset);
+        }),
+      );
+      return { generation, unreadable: assets.filter((_, index) => checks[index]?.status === "rejected") };
     },
     retry: false,
   });
 
   const prompt = draft.prompt.trim();
+  const definition = model?.fields ? { fields: model.fields } : null;
+  const values = settings ? workflowValues(settings) : {};
+  const durationInput = settings && model?.minDurationSeconds != null ? durationValue(settings) : null;
+  const workflow = definition ? evaluateWorkflowFields(definition, values, prompt, durationInput) : null;
+  const durationField = model?.fields?.find(field => field.source === "DURATION_SECONDS");
+  const hasDuration =
+    model?.minDurationSeconds != null && (!durationField || workflow?.activeFields.includes(durationField));
+  const duration = hasDuration ? durationInput : null;
+  const invalidDuration = !!(hasDuration && model && settings && !validDuration(model, settings.duration));
+  const labels = referenceLabels(settings?.references ?? [], model?.fields);
+  const choices = (settings?.references ?? []).flatMap((ref, index, refs) =>
+    ref.fieldKey && refs.findIndex(item => item.versionId === ref.versionId) === index
+      ? [
+          {
+            id: ref.versionId,
+            label: labels[index]!,
+            kind: ref.kind,
+            available: ref.projectId === context.data?.projectId,
+          },
+        ]
+      : [],
+  );
+  const validation = definition ? workflowValidationErrors(definition, values, prompt, duration, choices) : [];
+  const referenceErrors: string[] = [];
+  if (model && settings) {
+    if (
+      compatibleReferences(model, settings, prompt).length !== settings.references.length ||
+      settings.references.some(ref => ref.projectId !== context.data?.projectId)
+    ) {
+      referenceErrors.push(t("videoStudio.incompatibleReferences"));
+    } else if (settings.mode === "GENERAL_REFERENCE" && !definition && !settings.references.length) {
+      referenceErrors.push(t("videoStudio.referenceRequired"));
+    } else if (
+      model.adapterId === "ARK_SEEDANCE_2_I2V" &&
+      settings.references.some(ref => ref.kind === "AUDIO") &&
+      !settings.references.some(ref => ref.kind !== "AUDIO")
+    ) {
+      referenceErrors.push(t("videoStudio.visualReferenceRequired"));
+    }
+  }
   const canGenerate =
     context.isSuccess &&
     !context.isFetching &&
@@ -241,14 +410,20 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
     !invalidDuration &&
     !invalidMode &&
     !invalidRatio &&
-    !!prompt &&
+    !invalidResolution &&
+    (!!definition || !!prompt) &&
+    !validation.length &&
+    !referenceErrors.length &&
     prompt.length <= MAX_PROMPT_LENGTH &&
     !locked &&
-    !upload.isPending &&
+    !uploading &&
     !restore.isPending &&
-    (settings.mode === "TEXT"
-      ? !settings.startFrame && !settings.endFrame
-      : !!settings.startFrame && (!settings.endFrame || model.supportsEndFrame));
+    !change &&
+    (settings.mode === "START_END"
+      ? !!settings.startFrame &&
+        (!settings.endFrame || model.supportsEndFrame) &&
+        (!model.requiresEndFrame || !!settings.endFrame)
+      : !settings.startFrame && !settings.endFrame);
 
   function edit(patch: Partial<VideoStudioDraft>) {
     setRestoreError(undefined);
@@ -258,14 +433,33 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canGenerate || !settings || current()?.command) return;
+    const dynamicValues = Object.fromEntries<WorkflowValue>(
+      workflow?.activeFields.flatMap(field => {
+        const value = workflow.effectiveValues[field.key];
+        return field.source === "PARAMETER" && !isWorkflowMediaField(field) && value !== undefined
+          ? [[field.key, value] as const]
+          : [];
+      }) ?? [],
+    );
     const command: VideoStudioCommand = {
       key: createCommandKey(),
       request: {
         capabilityId: settings.capabilityId,
         capabilityVersion: settings.capabilityVersion,
         mode: settings.mode,
-        aspectRatio: settings.aspectRatio,
-        durationSeconds: Number(settings.duration),
+        ...(model?.aspectRatios.length && settings.aspectRatio ? { aspectRatio: settings.aspectRatio } : {}),
+        ...(model?.videoResolutions.length && settings.videoResolution
+          ? { videoResolution: settings.videoResolution }
+          : {}),
+        ...(Object.keys(dynamicValues).length ? { dynamicValues } : {}),
+        ...(settings.references.length
+          ? {
+              references: settings.references.map(({ kind, versionId, fieldKey }) =>
+                fieldKey ? { kind, versionId, fieldKey } : { kind, versionId },
+              ),
+            }
+          : {}),
+        durationSeconds: duration,
         prompt,
         ...(settings.startFrame ? { startFrameVersionId: settings.startFrame.versionId } : {}),
         ...(settings.endFrame ? { endFrameVersionId: settings.endFrame.versionId } : {}),
@@ -293,7 +487,7 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
   }
 
   function restoreSettings(id: string) {
-    if (locked || current()?.command || upload.isPending || restore.isPending) return;
+    if (locked || current()?.command || uploading || restore.isPending) return;
     setRestoreError(undefined);
     update({});
     const snapshot = current();
@@ -303,14 +497,30 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
         if (current() !== snapshot) return;
         if (unreadable.length) {
           setRestoreError(
-            t("videoStudio.restoreFrameRolesFailed", {
-              0: unreadable.map(([slot]) => t(FRAME_LABELS[slot])).join(" · "),
-            }),
+            t(
+              generation.references.length
+                ? "videoStudio.restoreReferencesFailed"
+                : "videoStudio.restoreFrameRolesFailed",
+              {
+                0: unreadable.map(({ label }) => label).join(" · "),
+              },
+            ),
           );
           return;
         }
-        const { capabilityId, capabilityVersion, mode, durationSeconds, aspectRatio, startFrame, endFrame, prompt } =
-          generation;
+        const {
+          capabilityId,
+          capabilityVersion,
+          mode,
+          durationSeconds,
+          aspectRatio,
+          videoResolution,
+          dynamicValues,
+          startFrame,
+          endFrame,
+          references,
+          prompt,
+        } = generation;
         edit({
           prompt,
           promptSource: null,
@@ -318,8 +528,11 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
             capabilityId,
             capabilityVersion,
             mode,
-            duration: String(durationSeconds),
+            duration: durationSeconds?.toString() ?? "",
             aspectRatio,
+            videoResolution,
+            dynamicValues,
+            references,
             startFrame,
             endFrame,
           },
@@ -331,57 +544,70 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
     });
   }
 
-  function changeSettings(nextModel: VideoStudioCapability, requestedMode?: VideoStudioSettings["mode"]) {
-    if (locked || !settings || upload.isPending) return;
-    const mode = requestedMode ?? (nextModel.modes.includes(settings.mode) ? settings.mode : nextModel.defaultMode);
-    const ratio = nextModel.aspectRatios.includes(settings.aspectRatio)
-      ? settings.aspectRatio
-      : nextModel.defaultAspectRatio;
-    const duration = validDuration(nextModel, settings.duration)
-      ? settings.duration
-      : String(nextModel.defaultDurationSeconds);
-    const incompatible: MessageKey[] = [];
-    if (!nextModel.modes.includes(settings.mode)) incompatible.push("videoStudio.mode");
-    if (ratio !== settings.aspectRatio) incompatible.push("media.editor.aspectRatio");
-    if (duration !== settings.duration) incompatible.push("videoStudio.seconds");
-    const next = {
-      ...settings,
-      capabilityId: nextModel.capabilityId,
-      capabilityVersion: nextModel.capabilityVersion,
-      mode,
-      duration,
-      aspectRatio: ratio,
-    };
-    for (const [slot, frame] of studioFrames(settings)) {
-      if (frame && !allowsFrame(nextModel, mode, slot)) {
-        incompatible.push(FRAME_LABELS[slot]);
-        next[slot] = null;
-      }
+  function applyChoice(
+    nextModel: VideoStudioCapability,
+    next: VideoStudioSettings,
+    trigger: string,
+    patch: Partial<VideoStudioDraft> = {},
+    incompatible: string[] = [],
+  ) {
+    const nextPrompt = (patch.prompt ?? draft.prompt).trim();
+    let kept = compatibleReferences(nextModel, next, nextPrompt);
+    // Dropping a controlling field can deactivate another named media slot.
+    for (let count = next.references.length; kept.length < count;) {
+      count = kept.length;
+      kept = compatibleReferences(nextModel, { ...next, references: kept }, nextPrompt);
     }
+    const dropped = referenceLabels(next.references, model?.fields).filter(
+      (_, index) => !kept.includes(next.references[index]!),
+    );
+    incompatible.push(...dropped);
+    patch = { ...patch, settings: { ...next, references: kept } };
     if (incompatible.length) {
+      // Invalidate a pending history restore without applying the proposed change.
       update({ settings });
-      changeTrigger.current = requestedMode ? "mode" : "model";
-      setChange({ next, incompatible });
+      changeTrigger.current = trigger;
+      setChange({ patch, incompatible });
     } else {
-      edit({ settings: next });
+      edit(patch);
     }
   }
 
+  function changeSettings(nextModel: VideoStudioCapability, requestedMode?: VideoStudioSettings["mode"]) {
+    if (locked || !settings || uploading) return;
+    const next = defaults(nextModel);
+    const sameModel = modelKey(nextModel) === modelKey(settings);
+    next.mode = requestedMode ?? (nextModel.modes.includes(settings.mode) ? settings.mode : next.mode);
+    if (settings.aspectRatio && nextModel.aspectRatios.includes(settings.aspectRatio))
+      next.aspectRatio = settings.aspectRatio;
+    if (settings.videoResolution && nextModel.videoResolutions.includes(settings.videoResolution)) {
+      next.videoResolution = settings.videoResolution;
+    }
+    if (nextModel.minDurationSeconds !== null && validDuration(nextModel, settings.duration))
+      next.duration = settings.duration;
+    if (sameModel) next.dynamicValues = settings.dynamicValues;
+    next.references = settings.references;
+    const incompatible: string[] = [];
+    for (const [slot, frame] of studioFrames(settings)) {
+      if (allowsFrame(nextModel, next.mode, slot)) next[slot] = frame;
+      else if (frame) incompatible.push(t(FRAME_LABELS[slot]));
+    }
+    applyChoice(nextModel, next, `${fieldId}-${requestedMode ? "mode" : "model"}`, {}, incompatible);
+  }
+
   function uploadFrame(slot: FrameSlot, file: File) {
-    if (
-      !settings ||
-      !model ||
-      !allowsFrame(model, settings.mode, slot) ||
-      locked ||
-      upload.isPending ||
-      restore.isPending
-    )
+    if (!settings || !model || !allowsFrame(model, settings.mode, slot) || locked || uploading || restore.isPending)
       return;
     setUploadError(undefined);
     edit({ settings });
     upload.mutate(file, {
       onSuccess: frame => {
-        if (current()?.settings === settings && frame.projectId === context.data?.projectId) {
+        const catalog = queryClient.getQueryData(contextOptions(ownerId).queryKey);
+        if (
+          current()?.settings === settings &&
+          frame.projectId === catalog?.projectId &&
+          catalog?.capabilities.some(item => modelKey(item) === modelKey(settings))
+        ) {
           edit({ settings: { ...settings, [slot]: frame } });
         }
       },
@@ -389,6 +615,70 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
         if (current()?.settings === settings) setUploadError(errorText(error, "videoStudio.uploadFailed"));
       },
     });
+  }
+
+  async function uploadReference(kind: VideoStudioReferenceAsset["kind"], file: File, fieldKey: string | null = null) {
+    const projectId = context.data?.projectId;
+    if (
+      !settings ||
+      !model ||
+      !projectId ||
+      settings.mode !== "GENERAL_REFERENCE" ||
+      locked ||
+      uploading ||
+      restore.isPending ||
+      current()?.command ||
+      queryClient.isMutating({ mutationKey: referenceUploadKey, exact: true })
+    )
+      return;
+    const others = fieldKey ? settings.references.filter(ref => ref.fieldKey !== fieldKey) : settings.references;
+    if (
+      others.length >= MAX_REFERENCES ||
+      others.filter(ref => ref.kind === kind).length >= model.referenceLimits[LIMIT_KEYS[kind]]
+    )
+      throw new Error(t("videoStudio.incompatibleReferences"));
+    setUploadError(undefined);
+    edit({ settings });
+    const snapshot = current();
+    let ref: VideoStudioReferenceAsset;
+    try {
+      ref = await referenceUpload.mutateAsync({ kind, file });
+    } catch (error) {
+      if (current() === snapshot) throw error;
+      return;
+    }
+    if (current() !== snapshot) return;
+    const latest = queryClient.getQueryData(contextOptions(ownerId).queryKey);
+    if (
+      projectId !== latest?.projectId ||
+      projectId !== ref.projectId ||
+      ref.kind !== kind ||
+      !latest?.capabilities.some(item => modelKey(item) === modelKey(settings))
+    ) {
+      throw new Error(t("media.runningHub.uploadFailed"));
+    }
+    const next = { ...settings, references: [...others, { ...ref, fieldKey }] };
+    if (compatibleReferences(model, next, prompt).length !== next.references.length) {
+      throw new Error(t("videoStudio.incompatibleReferences"));
+    }
+    edit({ settings: next });
+  }
+
+  function changeWorkflowField(key: string, value: WorkflowValue | undefined) {
+    if (!settings || !model || inactiveControls || current()?.command) return;
+    const field = workflow?.activeFields.find(item => item.key === key);
+    if (!field || field.source !== "PARAMETER" || isWorkflowMediaField(field)) return;
+    const trigger = document.activeElement?.id || `${fieldId}-mode`;
+    const dynamicValues = { ...settings.dynamicValues };
+    if (value === undefined) delete dynamicValues[key];
+    else dynamicValues[key] = value;
+    applyChoice(model, { ...settings, dynamicValues }, trigger);
+  }
+
+  function editPrompt(nextPrompt: string, trigger: string) {
+    const patch = { prompt: nextPrompt, promptSource: null, settings };
+    if (model?.fields && settings && settings.references.length) applyChoice(model, settings, trigger, patch);
+    else edit(patch);
   }
 
   function refresh() {
@@ -463,8 +753,15 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
     </div>
   );
   const { promptSource } = draft;
-  const inactiveControls = locked || upload.isPending;
+  const inactiveControls = locked || uploading;
   const canRestore = !inactiveControls && !restore.isPending;
+  const workflowControls = workflow?.activeFields
+    .filter(
+      field => field.source === "PARAMETER" && (settings?.mode === "GENERAL_REFERENCE" || !isWorkflowMediaField(field)),
+    )
+    .map(field => ({ ...field, enabledWhen: null }));
+  const secondsOptions = model ? durationOptions(model) : [];
+  const secondsId = `${fieldId}-duration`;
 
   return (
     <div className="video-studio">
@@ -589,8 +886,12 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
           </Notice>
         ) : null}
         {upload.isPending ? <LoadingState compact label={t("imageStudio.uploading")} /> : null}
+        {uploadingReference && !definition ? <LoadingState compact label={t("media.runningHub.uploading")} /> : null}
         {uploadError ? (
-          <Notice tone="danger" title={t("videoStudio.uploadFailed")}>
+          <Notice
+            tone="danger"
+            title={t(settings?.mode === "START_END" ? "videoStudio.uploadFailed" : "media.runningHub.uploadFailed")}
+          >
             {uploadError}
           </Notice>
         ) : null}
@@ -604,8 +905,8 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
               placeholder={t("videoStudio.promptPlaceholder")}
               maxLength={MAX_PROMPT_LENGTH}
               rows={3}
-              readOnly={locked}
-              onChange={event => edit({ prompt: event.target.value, promptSource: null, settings })}
+              readOnly={locked || uploadingReference}
+              onChange={event => editPrompt(event.target.value, event.target.id)}
             />
           </Field>
           {promptSource ? (
@@ -618,7 +919,7 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
                 type="button"
                 variant="ghost"
                 size="content"
-                disabled={locked}
+                disabled={locked || uploadingReference}
                 onClick={() => edit({ prompt: promptSource.previous, promptSource: null })}
               >
                 {t("imageStudio.undoHistoryPrompt")}
@@ -683,51 +984,84 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
                   ))}
                 </Select>
               </Field>
-              <Field data-invalid={invalidRatio || undefined}>
-                <FieldLabel htmlFor={`${fieldId}-ratio`}>{t("media.editor.aspectRatio")}</FieldLabel>
-                <Select
+              {model?.aspectRatios.length || (stale && settings.aspectRatio) ? (
+                <StudioSelect
                   id={`${fieldId}-ratio`}
+                  label={t("media.editor.aspectRatio")}
                   value={settings.aspectRatio}
+                  options={model?.aspectRatios ?? []}
+                  nativeDefault={model?.defaultAspectRatio}
                   disabled={inactiveControls || !model}
-                  aria-invalid={invalidRatio || undefined}
-                  onChange={event => {
-                    const aspectRatio = model?.aspectRatios.find(item => item === event.target.value);
-                    if (aspectRatio) edit({ settings: { ...settings, aspectRatio } });
+                  invalid={invalidRatio}
+                  onChange={value => {
+                    const aspectRatio = model?.aspectRatios.find(item => item === value) ?? null;
+                    edit({ settings: { ...settings, aspectRatio } });
                   }}
-                >
-                  {!model || invalidRatio ? (
-                    <option value={settings.aspectRatio} disabled>
-                      {settings.aspectRatio}
-                    </option>
-                  ) : null}
-                  {model?.aspectRatios.map(ratio => (
-                    <option key={ratio} value={ratio}>
-                      {ratio}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field data-invalid={invalidDuration || undefined}>
-                <FieldLabel htmlFor={`${fieldId}-duration`}>{t("videoStudio.seconds")}</FieldLabel>
-                <Input
-                  id={`${fieldId}-duration`}
-                  type="number"
-                  inputMode="numeric"
-                  min={model?.minDurationSeconds}
-                  max={model?.maxDurationSeconds}
-                  step={1}
-                  aria-invalid={invalidDuration || undefined}
-                  aria-describedby={invalidDuration ? `${fieldId}-duration-range` : undefined}
-                  disabled={inactiveControls || !model}
-                  value={settings.duration}
-                  onChange={event => edit({ settings: { ...settings, duration: event.target.value } })}
                 />
-                {invalidDuration && model ? (
-                  <FieldDescription id={`${fieldId}-duration-range`}>
-                    {t("videoStudio.durationRange", { 0: model.minDurationSeconds, 1: model.maxDurationSeconds })}
-                  </FieldDescription>
-                ) : null}
-              </Field>
+              ) : null}
+              {model?.videoResolutions.length || (stale && settings.videoResolution) ? (
+                <StudioSelect
+                  id={`${fieldId}-resolution`}
+                  label={t("media.editor.resolution")}
+                  value={settings.videoResolution}
+                  options={model?.videoResolutions ?? []}
+                  nativeDefault={model?.defaultVideoResolution}
+                  disabled={inactiveControls || !model}
+                  invalid={invalidResolution}
+                  onChange={videoResolution => edit({ settings: { ...settings, videoResolution } })}
+                />
+              ) : null}
+              {hasDuration || (stale && settings.duration !== "") ? (
+                <Field data-invalid={invalidDuration || undefined}>
+                  <FieldLabel htmlFor={secondsId}>{t("videoStudio.seconds")}</FieldLabel>
+                  {secondsOptions.length ? (
+                    <Select
+                      id={secondsId}
+                      value={settings.duration}
+                      disabled={inactiveControls}
+                      aria-invalid={invalidDuration || undefined}
+                      onChange={event =>
+                        model && applyChoice(model, { ...settings, duration: event.target.value }, secondsId)
+                      }
+                    >
+                      {invalidDuration ? (
+                        <option value={settings.duration} disabled>
+                          {settings.duration}
+                        </option>
+                      ) : null}
+                      {secondsOptions.map(option => (
+                        <option key={String(option.value)} value={String(option.value)}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <Input
+                      id={secondsId}
+                      type="number"
+                      inputMode="numeric"
+                      min={model?.minDurationSeconds ?? undefined}
+                      max={model?.maxDurationSeconds ?? undefined}
+                      step={1}
+                      aria-invalid={invalidDuration || undefined}
+                      aria-describedby={invalidDuration ? `${secondsId}-range` : undefined}
+                      disabled={inactiveControls || !model}
+                      value={settings.duration}
+                      onChange={event =>
+                        model && applyChoice(model, { ...settings, duration: event.target.value }, secondsId)
+                      }
+                    />
+                  )}
+                  {invalidDuration &&
+                  !secondsOptions.length &&
+                  model?.minDurationSeconds != null &&
+                  model.maxDurationSeconds != null ? (
+                    <FieldDescription id={`${secondsId}-range`}>
+                      {t("videoStudio.durationRange", { 0: model.minDurationSeconds, 1: model.maxDurationSeconds })}
+                    </FieldDescription>
+                  ) : null}
+                </Field>
+              ) : null}
             </FieldGroup>
           ) : null}
           {settings?.mode === "START_END" || settings?.startFrame || settings?.endFrame ? (
@@ -739,6 +1073,7 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
                     key={slot}
                     slot={slot}
                     frame={frame}
+                    required={slot === "startFrame" || !!model?.requiresEndFrame}
                     canUpload={supported && !inactiveControls && !restore.isPending}
                     canRemove={!inactiveControls}
                     onUpload={file => uploadFrame(slot, file)}
@@ -747,6 +1082,85 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
                 ) : null;
               })}
             </FieldGroup>
+          ) : null}
+          {workflowControls?.length ? (
+            <RunningHubForm
+              key={model && modelKey(model)}
+              definition={{ fields: workflowControls }}
+              values={values}
+              prompt={prompt}
+              durationSeconds={duration}
+              choices={choices}
+              disabled={inactiveControls || restore.isPending}
+              onChange={changeWorkflowField}
+              uploadOnlyMedia
+              onUpload={async (field, file) => {
+                if (field.type === "IMAGE" || field.type === "VIDEO" || field.type === "AUDIO") {
+                  await uploadReference(field.type, file, field.key);
+                }
+              }}
+            />
+          ) : null}
+          {settings && model && settings.mode === "GENERAL_REFERENCE" && !definition ? (
+            <FieldGroup className="video-studio-options">
+              {REFERENCE_KINDS.map(kind => {
+                const limit = model.referenceLimits[LIMIT_KEYS[kind]];
+                if (!limit) return null;
+                const count = settings.references.filter(ref => ref.kind === kind).length;
+                const id = `${fieldId}-${kind}`;
+                return (
+                  <Field key={kind}>
+                    <FieldLabel htmlFor={id}>
+                      {t("media.runningHub.uploadNamed", { 0: t(KIND_LABELS[kind]) })} ({count}/{limit})
+                    </FieldLabel>
+                    <Input
+                      id={id}
+                      type="file"
+                      accept={MEDIA_FILE_ACCEPT[kind]}
+                      disabled={
+                        inactiveControls ||
+                        restore.isPending ||
+                        count >= limit ||
+                        settings.references.length >= MAX_REFERENCES
+                      }
+                      onChange={event => {
+                        const file = event.currentTarget.files?.[0];
+                        event.currentTarget.value = "";
+                        if (file)
+                          void uploadReference(kind, file).catch(error =>
+                            setUploadError(error instanceof Error ? error.message : t("media.runningHub.uploadFailed")),
+                          );
+                      }}
+                    />
+                  </Field>
+                );
+              })}
+            </FieldGroup>
+          ) : null}
+          {settings?.references.length ? (
+            <ul className="video-studio-references" aria-label={t("common.mixedReference")}>
+              {settings.references.map((ref, index) => (
+                <ReferencePreview
+                  key={`${ref.fieldKey ?? ref.kind}:${ref.versionId}:${index}`}
+                  reference={ref}
+                  label={labels[index]!}
+                  disabled={inactiveControls}
+                  onRemove={event => {
+                    const next = { ...settings, references: settings.references.filter((_, i) => i !== index) };
+                    if (model) applyChoice(model, next, event.currentTarget.id);
+                    else edit({ settings: next });
+                  }}
+                  removeId={`${fieldId}-reference-${index}`}
+                />
+              ))}
+            </ul>
+          ) : null}
+          {validation.length || referenceErrors.length ? (
+            <ul className="video-studio-incompatible" aria-live="polite">
+              {[...validation, ...referenceErrors].map((message, index) => (
+                <li key={index}>{message}</li>
+              ))}
+            </ul>
           ) : null}
         </FieldGroup>
         <div className="video-studio-composer-actions">
@@ -770,7 +1184,7 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
           }}
           onCloseAutoFocus={event => {
             event.preventDefault();
-            document.getElementById(`${fieldId}-${changeTrigger.current}`)?.focus();
+            document.getElementById(changeTrigger.current ?? "")?.focus();
           }}
         >
           <DialogHeader>
@@ -778,8 +1192,8 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
             <DialogDescription>{t("videoStudio.changeSettingsHint")}</DialogDescription>
           </DialogHeader>
           <ul className="video-studio-incompatible">
-            {change?.incompatible.map(key => (
-              <li key={key}>{t(key)}</li>
+            {change?.incompatible.map((label, index) => (
+              <li key={index}>{label}</li>
             ))}
           </ul>
           <DialogFooter>
@@ -791,7 +1205,7 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
             <Button
               type="button"
               onClick={() => {
-                if (change && !current()?.command) edit({ settings: change.next });
+                if (change && !current()?.command) edit(change.patch);
                 setChange(null);
               }}
             >
@@ -841,9 +1255,97 @@ function HistoryEntry({
   );
 }
 
+function StudioSelect({
+  id,
+  label,
+  value,
+  options,
+  nativeDefault,
+  disabled,
+  invalid,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string | null;
+  options: string[];
+  nativeDefault?: string | null;
+  disabled: boolean;
+  invalid: boolean;
+  onChange: (value: string | null) => void;
+}) {
+  return (
+    <Field data-invalid={invalid || undefined}>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <Select
+        id={id}
+        value={value ?? ""}
+        disabled={disabled}
+        aria-invalid={invalid || undefined}
+        onChange={event => onChange(event.target.value || null)}
+      >
+        {!value || nativeDefault == null ? <option value="">{t("media.runningHub.useDefault")}</option> : null}
+        {value && !options.includes(value) ? (
+          <option value={value} disabled>
+            {value}
+          </option>
+        ) : null}
+        {options.map(option => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+}
+
+function ReferencePreview({
+  reference,
+  label,
+  disabled,
+  onRemove,
+  removeId,
+}: {
+  reference: Reference;
+  label: string;
+  disabled: boolean;
+  onRemove: MouseEventHandler<HTMLButtonElement>;
+  removeId: string;
+}) {
+  const { kind, projectId, assetId } = reference;
+  const source = assetContentUrl(projectId, assetId);
+  return (
+    <li>
+      <div className="video-studio-reference-header">
+        <span>{label}</span>
+        <Button
+          id={removeId}
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          disabled={disabled}
+          aria-label={t("videoStudio.removeFrame", { 0: label })}
+          onClick={onRemove}
+        >
+          <X aria-hidden />
+        </Button>
+      </div>
+      {kind === "IMAGE" ? (
+        <img src={assetThumbnailUrl(projectId, assetId)} alt={label} loading="lazy" />
+      ) : kind === "VIDEO" ? (
+        <video src={source} controls preload="none" aria-label={label} />
+      ) : (
+        <audio src={source} controls preload="none" aria-label={label} />
+      )}
+    </li>
+  );
+}
+
 function FramePicker({
   slot,
   frame,
+  required,
   canUpload,
   canRemove,
   onUpload,
@@ -851,6 +1353,7 @@ function FramePicker({
 }: {
   slot: FrameSlot;
   frame: VideoStudioFrame | null;
+  required: boolean;
   canUpload: boolean;
   canRemove: boolean;
   onUpload: (file: File) => void;
@@ -863,9 +1366,7 @@ function FramePicker({
   return (
     <Field className="video-studio-frame">
       <FieldLabel htmlFor={inputId}>{label}</FieldLabel>
-      <FieldDescription>
-        {t(slot === "startFrame" ? "videoStudio.requiredFrame" : "videoStudio.optionalFrame")}
-      </FieldDescription>
+      <FieldDescription>{t(required ? "videoStudio.requiredFrame" : "videoStudio.optionalFrame")}</FieldDescription>
       <div className="video-studio-frame-actions">
         {frame ? <img src={assetContentUrl(frame.projectId, frame.assetId)} alt={label} /> : null}
         <input

@@ -5312,7 +5312,7 @@ export interface paths {
         };
         /**
          * 读取当前所有者的私有视频工作台和可用能力
-         * @description 不要求选择项目或创建画布节点。只提供已发布且启用的 Mock 和 Seedance 2.0 能力；没有可用能力时返回空目录。
+         * @description 复用画布已发布且启用的视频生成能力、连接和输入约束。不要求选择项目或创建画布节点；没有兼容能力时返回空目录。
          */
         get: operations["getVideoStudioContext"];
         put?: never;
@@ -5343,6 +5343,34 @@ export interface paths {
          * @description 只接受一个实际可解码的静态图片文件（最多 20 MiB、4000 万像素），不接受动态图片、外部 URL 或跨作用域引用。不创建画布节点；在生成请求中指定首帧或尾帧角色。
          */
         post: operations["uploadVideoStudioFrame"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/references/{kind}": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                kind: components["schemas"]["VideoStudioReferenceKind"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 上传并固定私有参考素材版本
+         * @description 单文件上传，只接受实际可解码的静态图片、视频或音频。不接受外部 URL 或跨作用域引用，不创建画布节点。
+         */
+        post: operations["uploadVideoStudioReference"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5412,7 +5440,7 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /** @enum {string} */
-        VideoStudioMode: "TEXT" | "START_END";
+        VideoStudioMode: "TEXT" | "START_END" | "GENERAL_REFERENCE";
         /** @enum {string} */
         VideoStudioAspectRatio: "16:9" | "9:16" | "1:1";
         VideoStudioContext: {
@@ -5431,16 +5459,26 @@ export interface components {
             capabilityVersion: number;
             name: string;
             connectionName: string;
-            /** @enum {string} */
-            adapterId: "MOCK_VIDEO" | "ARK_SEEDANCE_2_I2V";
+            adapterId: string;
             modes: components["schemas"]["VideoStudioMode"][];
             defaultMode: components["schemas"]["VideoStudioMode"];
             supportsEndFrame: boolean;
-            minDurationSeconds: number;
-            maxDurationSeconds: number;
-            defaultDurationSeconds: number;
+            requiresEndFrame: boolean;
+            minDurationSeconds: number | null;
+            maxDurationSeconds: number | null;
+            defaultDurationSeconds: number | null;
             aspectRatios: components["schemas"]["VideoStudioAspectRatio"][];
-            defaultAspectRatio: components["schemas"]["VideoStudioAspectRatio"];
+            defaultAspectRatio: components["schemas"]["VideoStudioAspectRatio"] | null;
+            videoResolutions: string[];
+            defaultVideoResolution: string | null;
+            referenceLimits: {
+                image: number;
+                video: number;
+                audio: number;
+            };
+            /** @description 已发布协议的创作者字段，不含工作流图、接口地址或凭证；普通模型为 null。 */
+            fields: components["schemas"]["CreatorInputField"][] | null;
+            defaultDynamicValues: components["schemas"]["VideoStudioDynamicValues"];
         };
         VideoStudioFrame: {
             /** Format: uuid */
@@ -5454,15 +5492,45 @@ export interface components {
             width: number;
             height: number;
         };
-        /** @description TEXT 不接受帧；START_END 必须指定首帧，仅能力支持时可指定尾帧。帧必须是当前所有者工作台的固定图片版本。 */
+        /** @enum {string} */
+        VideoStudioReferenceKind: "IMAGE" | "VIDEO" | "AUDIO";
+        VideoStudioReferenceInput: {
+            kind: components["schemas"]["VideoStudioReferenceKind"];
+            /** Format: uuid */
+            versionId: string;
+            /** @description 已发布工作流的具名素材槽；普通全能参考留空 */
+            fieldKey?: string | null;
+        };
+        VideoStudioReferenceAsset: {
+            /** Format: uuid */
+            artifactId: string;
+            /** Format: uuid */
+            versionId: string;
+            /** Format: uuid */
+            assetId: string;
+            /** Format: uuid */
+            projectId: string;
+            kind: components["schemas"]["VideoStudioReferenceKind"];
+            fieldKey: string | null;
+            width: number | null;
+            height: number | null;
+            durationMs: number | null;
+            contentType: string;
+        };
+        /** @description 已发布协议中可编辑的非素材参数；提示词、时长、素材版本通过各自字段提供。 */
+        VideoStudioDynamicValues: {
+            [key: string]: components["schemas"]["RunningHubScalar"];
+        };
+        /** @description TEXT 不接受素材；START_END 使用固定静态帧，尾帧按能力约束；GENERAL_REFERENCE 使用有序私有参考版本，具名工作流必须指定槽位。 */
         CreateVideoStudioGeneration: {
             /** Format: uuid */
             capabilityId: string;
             capabilityVersion: number;
+            /** @description 按发布的能力校验；没有必填提示词的工作流可传空字符串 */
             prompt: string;
             mode: components["schemas"]["VideoStudioMode"];
-            /** @description 必须在所选能力的有效时长范围内 */
-            durationSeconds: number;
+            /** @description 整数秒；不映射时长或由供应商决定时传 null */
+            durationSeconds: number | null;
             /**
              * @description 缺省使用能力默认值；AUTO 固定为 16:9，不继承画布设置。
              * @enum {string}
@@ -5478,6 +5546,10 @@ export interface components {
              * @description 可选的 END_FRAME 角色
              */
             endFrameVersionId?: string | null;
+            references?: components["schemas"]["VideoStudioReferenceInput"][];
+            /** @description 普通模型在已发布档位中选择 */
+            videoResolution?: string;
+            dynamicValues?: components["schemas"]["VideoStudioDynamicValues"];
         };
         VideoStudioGeneration: {
             /** Format: uuid */
@@ -5489,9 +5561,12 @@ export interface components {
             capabilityVersion: number;
             prompt: string;
             mode: components["schemas"]["VideoStudioMode"];
-            /** @description 冻结的请求秒数，不是成品探测时长 */
-            durationSeconds: number;
-            aspectRatio: components["schemas"]["VideoStudioAspectRatio"];
+            /** @description 冻结的有效秒数，不是成品探测时长 */
+            durationSeconds: number | null;
+            aspectRatio: components["schemas"]["VideoStudioAspectRatio"] | null;
+            videoResolution: string | null;
+            dynamicValues: components["schemas"]["VideoStudioDynamicValues"];
+            references: components["schemas"]["VideoStudioReferenceAsset"][];
             startFrame: components["schemas"]["VideoStudioFrame"] | null;
             endFrame: components["schemas"]["VideoStudioFrame"] | null;
             /** Format: date-time */
@@ -20586,6 +20661,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VideoStudioFrame"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description 文件超过上传大小限制 */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description 请求 Content-Type 不受支持 */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
+            503: components["responses"]["ObjectStorageFailure"];
+        };
+    };
+    uploadVideoStudioReference: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                kind: components["schemas"]["VideoStudioReferenceKind"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 当前所有者的私有参考素材及固定版本 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoStudioReferenceAsset"];
                 };
             };
             400: components["responses"]["ValidationError"];

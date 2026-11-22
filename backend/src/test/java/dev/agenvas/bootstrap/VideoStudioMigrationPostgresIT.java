@@ -13,14 +13,14 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
-/** Exercises both pre-existing V67 data and V68 constraints against real PostgreSQL. */
+/** Checks scope constraints and preserves original requests while extending the request format. */
 @Testcontainers
 class VideoStudioMigrationPostgresIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
 
     @Test
-    void upgradesV67WithoutChangingCanvasOrImageHistoryAndEnforcesVideoLedgerScope() throws SQLException {
+    void upgradesV67ThroughV69WithOriginalHistoryAndNewReferenceRequests() throws SQLException {
         migrateTo("67");
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
                 POSTGRES.getPassword()); var sql = connection.createStatement()) {
@@ -113,8 +113,31 @@ class VideoStudioMigrationPostgresIT {
                     "23505", "uq_video_studio_generation_task");
             assertConstraint(() -> sql.executeUpdate("update video_studio_generation set project_purpose='CANVAS'"),
                     "23514", "ck_video_studio_generation_purpose");
+
+            assertThat(migrateTo("69")).isEqualTo(1);
+            assertConstraint(() -> generation(connection, owner, video, secondVideoTask, "malformed",
+                    "{\"schemaVersion\":2,\"references\":[]}"), "23514", "ck_video_studio_generation_request");
+            generation(connection, owner, video, secondVideoTask, "references",
+                    "{\"schemaVersion\":2,\"references\":[],\"dynamicValues\":{}}");
+            try (var query = connection.prepareStatement("""
+                    select command_key, request_json->>'schemaVersion', task_id from video_studio_generation
+                    where project_id = ? order by command_key
+                    """)) {
+                query.setObject(1, video);
+                try (var rows = query.executeQuery()) {
+                    assertThat(rows.next()).isTrue();
+                    assertThat(rows.getString(1)).isEqualTo("command");
+                    assertThat(rows.getString(2)).isEqualTo("1");
+                    assertThat(rows.getObject(3, UUID.class)).isEqualTo(videoTask);
+                    assertThat(rows.next()).isTrue();
+                    assertThat(rows.getString(1)).isEqualTo("references");
+                    assertThat(rows.getString(2)).isEqualTo("2");
+                    assertThat(rows.getObject(3, UUID.class)).isEqualTo(secondVideoTask);
+                    assertThat(rows.next()).isFalse();
+                }
+            }
         }
-        assertThat(migrateTo("68")).isZero();
+        assertThat(migrateTo("69")).isZero();
     }
 
     private static int migrateTo(String target) {

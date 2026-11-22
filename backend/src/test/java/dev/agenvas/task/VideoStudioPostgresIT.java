@@ -101,7 +101,8 @@ class VideoStudioPostgresIT {
         var first = capability(catalog, firstOnly.id());
         var ends = capability(catalog, both.id());
         assertThat(text.path("modes").valueStream().map(JsonNode::asText).toList()).containsExactly("TEXT");
-        assertThat(first.path("modes").valueStream().map(JsonNode::asText).toList()).containsExactly("TEXT", "START_END");
+        assertThat(first.path("modes").valueStream().map(JsonNode::asText).toList())
+                .containsExactly("TEXT", "START_END", "GENERAL_REFERENCE");
         assertThat(first.path("supportsEndFrame").asBoolean()).isFalse();
         assertThat(ends.path("supportsEndFrame").asBoolean()).isTrue();
         assertThat(first.path("defaultDurationSeconds").asInt()).isEqualTo(5);
@@ -212,7 +213,8 @@ class VideoStudioPostgresIT {
         long priorUsage = reservations(project);
         UUID rolledBack = transactions.execute(tx -> {
             var created = studio.accept(owner, new VideoStudioService.Command(model.id(), model.currentVersion(),
-                    "Will roll back", VideoInputMode.TEXT, 5, null, null, null), "rollback-generation");
+                    "Will roll back", VideoInputMode.TEXT, 5, null, null, null, List.of(), null,
+                    mapper.createObjectNode()), "rollback-generation");
             tx.setRollbackOnly();
             return created.id();
         });
@@ -237,9 +239,42 @@ class VideoStudioPostgresIT {
         assertThat(seen).containsExactlyInAnyOrderElementsOf(ids);
     }
 
+    @Test
+    void referenceUploadChecksOwnershipCsrfActualKindAndPreservesHistory() throws Exception {
+        var model = publish("video-references", 1);
+        var file = new MockMultipartFile("file", "reference.png", "image/png", ImageAssetFixture.encoded("png", 8, 6));
+        mvc.perform(multipart(BASE + "/references/IMAGE").file(file).with(csrf()))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(multipart(BASE + "/references/IMAGE").file(file).with(auth))
+                .andExpect(status().isForbidden());
+        mvc.perform(multipart(BASE + "/references/VIDEO").file(file).with(auth).with(csrf()))
+                .andExpect(status().is4xxClientError());
+        var image = payload(mvc.perform(multipart(BASE + "/references/IMAGE").file(file).with(auth).with(csrf()))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        assertThat(image.path("kind").asText()).isEqualTo("IMAGE");
+        assertThat(image.path("contentType").asText()).isEqualTo("image/png");
+        var request = json(model.id(), model.currentVersion(), "GENERAL_REFERENCE");
+        send("empty-general-reference", request, 400);
+        var refs = request.putArray("references");
+        refs.addObject().put("kind", "IMAGE").put("versionId", image.path("versionId").asText());
+        var accepted = send("one-reference", request, 201);
+        assertThat(accepted.at("/references/0")).isEqualTo(image);
+        assertThat(accepted.path("startFrame").isNull()).isTrue();
+        assertThat(send("one-reference", request, 201)).isEqualTo(accepted);
+        var response = mvc.perform(get(BASE + "/generations/" + accepted.path("id").asText()).with(auth))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(payload(response).at("/references/0")).isEqualTo(image);
+        send("reference-mode-mismatch", request.deepCopy().put("mode", "TEXT"), 400);
+        refs.addObject().put("kind", "IMAGE").put("versionId", UUID.randomUUID().toString());
+        send("reference-capacity", request, 400);
+        refs.remove(1);
+        ((ObjectNode) refs.get(0)).put("versionId", UUID.randomUUID().toString());
+        send("reference-foreign", request, 404);
+    }
+
     private Capability publish(String name, int maxFrames) {
         var settings = mapper.createObjectNode().put("minimumSeconds", 4).put("maximumSeconds", 8)
-                .put("maxReferenceImages", maxFrames).put("defaultDurationSeconds", 5);
+                .put("maxReferenceImages", maxFrames).put("maxReferenceAudios", 0).put("defaultDurationSeconds", 5);
         settings.putObject("defaultParameters").put("aspectRatio", "9:16");
         return capabilities.publishCapability(connection, name, "MOCK_VIDEO", settings);
     }

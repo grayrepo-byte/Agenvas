@@ -45,6 +45,7 @@ import dev.agenvas.task.domain.ImageOperationSpec;
 import dev.agenvas.usage.application.UsageService;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -52,6 +53,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 import javax.imageio.ImageIO;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
@@ -248,18 +250,14 @@ public class DirectMediaTaskService {
             MediaDraft draft = prepared.draft();
             Task.Kind kind = prepared.kind();
             MediaCapabilityBinding binding = prepared.binding();
-            var definition = prepared.definition();
             var kling = prepared.kling();
             var nativeProfile = prepared.nativeProfile();
-            boolean dynamic = definition != null;
             ObjectNode dynamicParameters = prepared.dynamicParameters();
             ImageGenerationParameters imageParameters = prepared.imageParameters();
-            VideoGenerationParameters videoParameters = prepared.videoParameters();
             Integer duration = prepared.duration();
             int seconds = kind == Task.Kind.VIDEO_GENERATION && duration != null ? duration : 0;
             JsonNode configuredSettings = prepared.configuredSettings();
             String renderedPrompt = prepared.renderedPrompt();
-            String autodlResolution = prepared.autodlResolution();
             String resolutionTier = prepared.resolutionTier();
             Instant now = clock.instant();
             int outputCount = imageParameters == null ? 1 : imageParameters.generationCount();
@@ -285,12 +283,10 @@ public class DirectMediaTaskService {
                     input.put(Task.APPROVAL_INPUT_PROPERTY, approvalId.toString());
                 if (requireExplicitSelection)
                     input.put(Task.REQUIRE_EXPLICIT_SELECTION_PROPERTY, true);
-                if (dynamic)
-                    input.put("providerProtocol", "RUNNINGHUB_V2");
-                if (kling != null)
-                    input.put("providerProtocol", KlingModels.PROTOCOL_ID);
+                String providerProtocol = providerProtocol(binding.adapterId());
+                if (providerProtocol != null)
+                    input.put("providerProtocol", providerProtocol);
                 if (nativeProfile != null) {
-                    input.put("providerProtocol", NativeMediaProtocol.PROTOCOL_ID);
                     input.put("nativeBillableInputSeconds", nativeBillableInputSeconds(ownerId, projectId, prepared));
                     if (kind == Task.Kind.IMAGE_GENERATION) {
                         Integer count = nativeProfile
@@ -331,113 +327,12 @@ public class DirectMediaTaskService {
                 input.put("workflowVersion", binding.adapterId() + ":" + binding.mappingSha256());
                 if (kind == Task.Kind.VIDEO_GENERATION && duration != null)
                     input.put("durationSeconds", seconds);
-                ObjectNode frozen = input.putObject("mediaInput");
-                var comfyDimensions = comfyDimensions(ownerId, projectId, prepared);
-                if (comfyDimensions != null)
-                    frozen.set("providerParameters", comfyProviderParameters(prepared, comfyDimensions));
-                var fixedVideoParameters = fixedVideoProviderParameters(ownerId, projectId, prepared);
-                if (fixedVideoParameters != null)
-                    frozen.set("providerParameters", fixedVideoParameters);
-                if (kling != null)
-                    frozen.set("providerParameters", klingProviderParameters(prepared));
-                if (nativeProfile != null)
-                    frozen.set("providerParameters", nativeProviderParameters(prepared));
-                if (MiniMaxH3Protocol.ADAPTER_ID.equals(binding.adapterId())) {
-                    String ratio = prepared.videoParameters().aspectRatio();
-                    if (draft.videoInputMode() == MediaDraft.VideoInputMode.START_END)
-                        ratio = "adaptive";
-                    else if (VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
-                        ratio = draft.videoInputMode() == MediaDraft.VideoInputMode.GENERAL_REFERENCE
-                                ? "adaptive"
-                                : projectAspectRatio(projects.get(ownerId, projectId).aspectRatio());
-                    }
-                    frozen.putObject("providerParameters").put("ratio", ratio);
-                }
-                if (KlingProtocol.IMAGE_ADAPTER_ID.equals(binding.adapterId())
-                        || KlingProtocol.VIDEO_ADAPTER_ID.equals(binding.adapterId())) {
-                    String ratio = kind == Task.Kind.IMAGE_GENERATION
-                            ? imageParameters.aspectRatio()
-                            : videoParameters.aspectRatio();
-                    // Resolve AUTO during acceptance, before a later project edit can change it.
-                    if ("AUTO".equals(ratio))
-                        ratio = projectAspectRatio(projects.get(ownerId, projectId).aspectRatio());
-                    frozen.putObject("providerParameters").put("aspectRatio", ratio);
-                }
-                if (autodlResolution != null) {
-                    ObjectNode providerParameters = frozen.putObject("providerParameters");
-                    providerParameters.put("workflowId", configuredSettings.path("workflowId").asText());
-                    providerParameters.put("resolution", autodlResolution);
-                    if (configuredSettings.has("seed"))
-                        providerParameters.set("seed", configuredSettings.get("seed"));
-                }
+                ObjectNode frozen = freezeMediaInput(ownerId, projectId, prepared, false);
+                input.set("mediaInput", frozen);
                 if (outputCard.selectedVersionId() == null)
                     frozen.putNull("parentVersionId");
                 else
                     frozen.put("parentVersionId", outputCard.selectedVersionId().toString());
-                frozen.put("mode", kind == Task.Kind.IMAGE_GENERATION
-                        ? MediaDraft.VideoInputMode.GENERAL_REFERENCE.name()
-                        : kind == Task.Kind.AUDIO_GENERATION ? "TEXT" : draft.videoInputMode().name());
-                if (dynamic)
-                    frozen.set("runningHubContract", mapper.valueToTree(definition.executionContract()));
-                frozen.put("prompt", draft.prompt());
-                frozen.put("userRenderedPrompt", prepared.userRenderedPrompt());
-                frozen.set("promptInputs", mapper.valueToTree(prepared.promptInputs()));
-                frozen.put("renderedPrompt", renderedPrompt);
-                if (prepared.style() == null)
-                    frozen.putNull("style");
-                else
-                    frozen.set("style", mapper.valueToTree(prepared.style()));
-                frozen.set("parameters", effectiveParameters(prepared));
-                frozen.put("capabilityId", binding.capabilityId().toString());
-                frozen.put("capabilityVersion", binding.capabilityVersion());
-                if (kind == Task.Kind.VIDEO_GENERATION && duration != null)
-                    frozen.put("durationSeconds", seconds);
-                frozen.putArray("images");
-                frozen.putArray("audios");
-                frozen.putArray("videos");
-                for (MediaDraft.MediaInput imageInput : draft.mediaInputs()) {
-                    ArtifactVersion image = artifacts.requireMediaVersionForTask(ownerId, projectId,
-                            imageInput.versionId(),
-                            dev.agenvas.artifact.application.MediaDraftService.mediaKind(imageInput.role()));
-                    String mediaArray = imageInput.role() == MediaDraft.InputRole.AUDIO_REFERENCE
-                            ? "audios"
-                            : imageInput.role() == MediaDraft.InputRole.VIDEO_REFERENCE ? "videos" : "images";
-                    ArrayNode group = (ArrayNode) frozen.get(mediaArray);
-                    ObjectNode imageNode = group.addObject();
-                    imageNode.put("artifactId", image.artifactId().toString());
-                    imageNode.put("versionId", image.id().toString());
-                    imageNode.put("role", imageInput.role().name());
-                    imageNode.put("order", group.size() - 1);
-                    if (nativeProfile != null) {
-                        var field = nativeProfile.inputs().stream().filter(f -> f.media()
-                                && imageInput.versionId().toString()
-                                        .equals(dynamicParameters.path(NativeMediaProtocol.VALUES_PROPERTY)
-                                                .path(f.key()).asText()))
-                                .findFirst().orElseThrow(NativeMediaProfiles::invalid);
-                        if (nativeProfile.protocol().usesMediaUrl(nativeProfile.profile(), field)) {
-                            Asset asset = assets.requireReadyMedia(ownerId, projectId,
-                                    UUID.fromString(image.content().path("assetId").asText()),
-                                    Asset.MediaKind.valueOf(field.type().name()));
-                            UUID relayProfile = relay.pinProfile(asset);
-                            if (relayProfile == null)
-                                imageNode.putNull("relayProfileId");
-                            else
-                                imageNode.put("relayProfileId", relayProfile.toString());
-                        }
-                    }
-                    if ((MediaAdapterRegistry.SEEDANCE_2.equals(binding.adapterId())
-                            || MiniMaxH3Protocol.ADAPTER_ID.equals(binding.adapterId())
-                            || KlingModels.VIDEO_ADAPTER_ID.equals(binding.adapterId()))
-                            && imageInput.role() == MediaDraft.InputRole.VIDEO_REFERENCE) {
-                        Asset asset = assets.requireReadyMedia(ownerId, projectId,
-                                UUID.fromString(image.content().path("assetId").asText()), Asset.MediaKind.VIDEO);
-                        UUID relayProfile = relay.pinProfile(asset);
-                        if (relayProfile == null)
-                            imageNode.putNull("relayProfileId");
-                        else
-                            imageNode.put("relayProfileId", relayProfile.toString());
-                    }
-                }
                 pinImageRelay(input, binding);
                 frozen.set("mentions", mapper.valueToTree(draft.mentions()));
                 // These are the applied snapshots validated against this saved draft. Providers
@@ -501,6 +396,187 @@ public class DirectMediaTaskService {
         }
     }
 
+    StudioPreparation prepareStudioVideo(UUID owner, UUID project, MediaDraft draft, MediaCapabilityBinding binding) {
+        String prompt = renderPrompt(draft);
+        PreparedMedia prepared = prepareMedia(owner, project, draft, Task.Kind.VIDEO_GENERATION, binding,
+                null, null, null, List.of(), prompt, prompt, () -> VideoGenerationParameters.LANDSCAPE_ASPECT_RATIO);
+        ObjectNode media = freezeMediaInput(owner, project, prepared, true);
+        JsonNode settings = prepared.configuredSettings();
+        JsonNode pricing = dev.agenvas.provider.domain.MediaCapabilityConfiguration.price(settings,
+                prepared.resolutionTier());
+        JsonNode tokenPricing = settings.get("tokenPricing");
+        return new StudioPreparation(media, prepared.renderedPrompt(), prepared.duration(),
+                studioVideoResolution(prepared), pricing, tokenPricing == null ? null : tokenPricing.deepCopy(),
+                nativeBillableInputSeconds(owner, project, prepared), studioDynamicValues(prepared),
+                providerProtocol(binding.adapterId()));
+    }
+
+    record StudioPreparation(ObjectNode mediaInput, String renderedPrompt, Integer duration, String videoResolution,
+            JsonNode pricing, JsonNode tokenPricing, BigDecimal nativeBillableInputSeconds, ObjectNode dynamicValues,
+            String providerProtocol) {
+    }
+
+    static String providerProtocol(String adapterId) {
+        if (MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(adapterId))
+            return "RUNNINGHUB_V2";
+        if (KlingModels.adapter(adapterId))
+            return KlingModels.PROTOCOL_ID;
+        return NativeMediaProfiles.supports(adapterId) ? NativeMediaProtocol.PROTOCOL_ID : null;
+    }
+
+    private static String studioVideoResolution(PreparedMedia prepared) {
+        if (prepared.nativeProfile() != null)
+            return prepared.dynamicParameters().path(NativeMediaProtocol.VALUES_PROPERTY)
+                    .path("resolution").asText(null);
+        if (prepared.kling() != null)
+            return prepared.dynamicParameters().path(KlingModels.VALUES_PROPERTY).path("resolution").asText(null);
+        return prepared.resolutionTier();
+    }
+
+    private ObjectNode studioDynamicValues(PreparedMedia prepared) {
+        ObjectNode result = mapper.createObjectNode();
+        var definition = prepared.definition();
+        var kling = prepared.kling();
+        var nativeProfile = prepared.nativeProfile();
+        if (kling != null) {
+            var values = prepared.dynamicParameters().path(KlingModels.VALUES_PROPERTY);
+            for (var field : KlingModels.inputs(kling))
+                if (!field.media() && field.effectiveSource() == RunningHubDefinition.Source.PARAMETER)
+                    copyScalarValue(result, values, field.key());
+        } else if (nativeProfile != null) {
+            var values = prepared.dynamicParameters().path(NativeMediaProtocol.VALUES_PROPERTY);
+            for (var field : nativeProfile.inputs())
+                if (!field.media() && field.effectiveSource() == RunningHubDefinition.Source.PARAMETER)
+                    copyScalarValue(result, values, field.key());
+        } else {
+            List<RunningHubDefinition.Field> fields;
+            JsonNode values;
+            if (definition != null) {
+                fields = definition.fields();
+                values = prepared.dynamicParameters().path(RunningHubDefinition.VALUES_PROPERTY);
+            } else if (prepared.comfyValues() != null) {
+                fields = prepared.comfy().inputs();
+                values = prepared.comfyValues();
+            } else {
+                return result;
+            }
+            for (var field : fields)
+                if (!field.media() && field.effectiveSource() == RunningHubDefinition.Source.PARAMETER)
+                    copyScalarValue(result, values, field.key());
+        }
+        return result;
+    }
+
+    private static void copyScalarValue(ObjectNode result, JsonNode values, String key) {
+        JsonNode value = values.path(key);
+        if (value.isTextual() || value.isNumber() || value.isBoolean())
+            result.set(key, value);
+    }
+
+    private ObjectNode freezeMediaInput(UUID owner, UUID project, PreparedMedia prepared, boolean studio) {
+        ObjectNode frozen = mapper.createObjectNode();
+        var draft = prepared.draft();
+        var kind = prepared.kind();
+        var binding = prepared.binding();
+        var nativeProfile = prepared.nativeProfile();
+        var config = prepared.configuredSettings();
+        String adapter = binding.adapterId();
+        var dimensions = comfyDimensions(prepared);
+        if (dimensions != null)
+            frozen.set("providerParameters", comfyProviderParameters(prepared, dimensions));
+        var fixedVideoParameters = fixedVideoProviderParameters(prepared);
+        if (fixedVideoParameters != null)
+            frozen.set("providerParameters", fixedVideoParameters);
+        if (prepared.kling() != null)
+            frozen.set("providerParameters", klingProviderParameters(prepared));
+        if (nativeProfile != null)
+            frozen.set("providerParameters", nativeProviderParameters(prepared));
+        if (MiniMaxH3Protocol.ADAPTER_ID.equals(adapter)) {
+            String ratio = prepared.videoParameters().aspectRatio();
+            if (draft.videoInputMode() == MediaDraft.VideoInputMode.START_END)
+                ratio = "adaptive";
+            else if (VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
+                ratio = draft.videoInputMode() == MediaDraft.VideoInputMode.GENERAL_REFERENCE
+                        ? "adaptive"
+                        : prepared.fallbackAspectRatio().get();
+            }
+            frozen.putObject("providerParameters").put("ratio", ratio);
+        }
+        if (KlingProtocol.IMAGE_ADAPTER_ID.equals(adapter) || KlingProtocol.VIDEO_ADAPTER_ID.equals(adapter)) {
+            String ratio = kind == Task.Kind.IMAGE_GENERATION
+                    ? prepared.imageParameters().aspectRatio()
+                    : prepared.videoParameters().aspectRatio();
+            if ("AUTO".equals(ratio))
+                ratio = prepared.fallbackAspectRatio().get();
+            frozen.putObject("providerParameters").put("aspectRatio", ratio);
+        }
+        if (studio && "MOCK_VIDEO".equals(adapter))
+            frozen.putObject("providerParameters").put("aspectRatio", prepared.videoParameters().aspectRatio());
+        if (prepared.autodlResolution() != null) {
+            ObjectNode provider = frozen.putObject("providerParameters");
+            provider.put("workflowId", config.path("workflowId").asText());
+            provider.put("resolution", prepared.autodlResolution());
+            if (config.has("seed"))
+                provider.set("seed", config.get("seed"));
+        }
+        frozen.put("mode", kind == Task.Kind.IMAGE_GENERATION
+                ? MediaDraft.VideoInputMode.GENERAL_REFERENCE.name()
+                : kind == Task.Kind.AUDIO_GENERATION ? "TEXT" : draft.videoInputMode().name());
+        if (prepared.definition() != null)
+            frozen.set("runningHubContract", mapper.valueToTree(prepared.definition().executionContract()));
+        frozen.put("prompt", draft.prompt());
+        frozen.put("userRenderedPrompt", prepared.userRenderedPrompt());
+        frozen.put("renderedPrompt", prepared.renderedPrompt());
+        if (!studio) {
+            frozen.set("promptInputs", mapper.valueToTree(prepared.promptInputs()));
+            frozen.set("style", mapper.valueToTree(prepared.style()));
+        }
+        frozen.set("parameters", effectiveParameters(prepared));
+        frozen.put("capabilityId", binding.capabilityId().toString());
+        frozen.put("capabilityVersion", binding.capabilityVersion());
+        if (kind == Task.Kind.VIDEO_GENERATION && prepared.duration() != null)
+            frozen.put("durationSeconds", prepared.duration());
+        frozen.putArray("images");
+        frozen.putArray("audios");
+        frozen.putArray("videos");
+        for (var input : draft.mediaInputs()) {
+            var mediaKind = MediaDraftService.mediaKind(input.role());
+            var version = artifacts.requireMediaVersionForTask(owner, project, input.versionId(), mediaKind);
+            String group = switch (mediaKind) {
+                case AUDIO -> "audios";
+                case VIDEO -> "videos";
+                default -> "images";
+            };
+            ArrayNode items = (ArrayNode) frozen.get(group);
+            ObjectNode item = items.addObject()
+                    .put("artifactId", version.artifactId().toString()).put("versionId", version.id().toString())
+                    .put("role", input.role().name()).put("order", items.size() - 1);
+            if (studio)
+                item.put("assetId", version.content().path("assetId").asText());
+            boolean pinRelay = input.role() == MediaDraft.InputRole.VIDEO_REFERENCE
+                    && (MediaAdapterRegistry.SEEDANCE_2.equals(adapter) || MiniMaxH3Protocol.ADAPTER_ID.equals(adapter)
+                            || KlingModels.VIDEO_ADAPTER_ID.equals(adapter));
+            if (nativeProfile != null) {
+                JsonNode values = prepared.dynamicParameters().path(NativeMediaProtocol.VALUES_PROPERTY);
+                var field = nativeProfile.inputs().stream().filter(f -> f.media()
+                        && version.id().toString().equals(values.path(f.key()).asText()))
+                        .findFirst().orElseThrow(NativeMediaProfiles::invalid);
+                pinRelay |= nativeProfile.protocol().usesMediaUrl(nativeProfile.profile(), field);
+            }
+            if (pinRelay) {
+                Asset asset = assets.requireReadyMedia(owner, project,
+                        UUID.fromString(version.content().path("assetId").asText()),
+                        Asset.MediaKind.valueOf(mediaKind.name()));
+                UUID relayProfile = relay.pinProfile(asset);
+                if (relayProfile == null)
+                    item.putNull("relayProfileId");
+                else
+                    item.put("relayProfileId", relayProfile.toString());
+            }
+        }
+        return frozen;
+    }
+
     private PreparedMedia prepare(UUID ownerId, UUID projectId, UUID artifactId,
             UUID canvasItemId, long expectedDraftVersion) {
         Artifact target = artifacts.get(ownerId, projectId, artifactId).artifact();
@@ -530,7 +606,16 @@ public class DirectMediaTaskService {
         var linkedPrompts = promptInputs.resolve(ownerId, projectId, canvasItem.id());
         String userRenderedPrompt = CanvasPromptInputService.compose(linkedPrompts, renderPrompt(draft));
         String renderedPrompt = MediaStyleService.compose(userRenderedPrompt, style);
-        MediaCapabilityBinding selected = capabilities.forDraft(draft.capabilityId(), kind);
+        return prepareMedia(ownerId, projectId, draft, kind, capabilities.forDraft(draft.capabilityId(), kind),
+                target, canvasItem, style, linkedPrompts, userRenderedPrompt, renderedPrompt,
+                () -> projectAspectRatio(projects.get(ownerId, projectId).aspectRatio()));
+    }
+
+    private PreparedMedia prepareMedia(UUID ownerId, UUID projectId, MediaDraft draft, Task.Kind kind,
+            MediaCapabilityBinding selected, Artifact target, CanvasItem canvasItem, MediaStyleService.Snapshot style,
+            List<PromptInput> linkedPrompts, String userRenderedPrompt, String renderedPrompt,
+            Supplier<String> fallbackAspectRatio) {
+        boolean studio = canvasItem == null;
         var definition = capabilities.runningHubDefinition(selected);
         var nativeProfile = capabilities.nativeProfile(selected);
         var kling = capabilities.klingProfile(selected);
@@ -561,6 +646,12 @@ public class DirectMediaTaskService {
                 : null;
         boolean dynamic = definition != null;
         boolean fullyDeclared = dynamic || kling != null || nativeProfile != null;
+        boolean studioNamed = studio && (fullyDeclared || comfy != null);
+        if (studio && !capabilities.inputPolicy(selected).supportedVideoInputModes()
+                .contains(draft.videoInputMode().name())) {
+            throw invalid(ApiMessage.of(
+                    "api.direct-media-task-service.the-selected-video-capability-does-not-support-the-current-picture"));
+        }
         if (style != null && (dynamic
                 && definition.fields().stream()
                         .noneMatch(field -> field
@@ -591,7 +682,7 @@ public class DirectMediaTaskService {
             throw invalid(ApiMessage
                     .of("api.direct-media-task-service.before-running-the-first-and-last-frame-video-you-need"));
         }
-        if (!fullyDeclared && kind == Task.Kind.VIDEO_GENERATION
+        if (!fullyDeclared && !studioNamed && kind == Task.Kind.VIDEO_GENERATION
                 && draft.videoInputMode() == MediaDraft.VideoInputMode.GENERAL_REFERENCE
                 && draft.mediaInputs().isEmpty()) {
             throw invalid(ApiMessage
@@ -625,6 +716,10 @@ public class DirectMediaTaskService {
                 duration = null;
             else if (duration == null && field.defaultValue() != null)
                 duration = field.defaultValue().asInt();
+        }
+        if (studio && dynamic && definition.fields().stream()
+                .noneMatch(field -> field.effectiveSource() == RunningHubDefinition.Source.DURATION_SECONDS)) {
+            duration = null;
         }
         if (!fullyDeclared && kind == Task.Kind.VIDEO_GENERATION && duration == null) {
             throw invalid(ApiMessage
@@ -662,6 +757,13 @@ public class DirectMediaTaskService {
             dynamicParameters.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY, dynamicValues);
             dev.agenvas.artifact.application.MediaDraftService.validateSlots(definition, dynamicParameters,
                     draft.mediaInputs(), true);
+            if (studio) {
+                duration = null;
+                for (var field : definition.fields())
+                    if (field.effectiveSource() == RunningHubDefinition.Source.DURATION_SECONDS
+                            && dynamicValues.hasNonNull(field.key()))
+                        duration = dynamicValues.path(field.key()).intValue();
+            }
         } else if (nativeProfile != null) {
             JsonNode merged = capabilities.parameters(binding, draft.parameters());
             NativeMediaProfiles.validateDraft(nativeProfile, merged, renderedPrompt, duration, draft.mediaInputs(),
@@ -728,7 +830,7 @@ public class DirectMediaTaskService {
             slotParameters.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY, comfyValues);
             MediaDraftService.validateSlots(comfy.inputs(), slotParameters, draft.mediaInputs(), true);
         }
-        validateReferenceAssets(ownerId, projectId, draft, binding);
+        validateReferenceAssets(ownerId, projectId, draft, binding, studio ? dynamicParameters : null);
         JsonNode parametersForControls = capabilities.parameters(binding, comfy == null
                 ? draft.parameters()
                 : ComfyUiWorkflowDefinition.standardParameters(draft.parameters()));
@@ -738,6 +840,13 @@ public class DirectMediaTaskService {
         VideoGenerationParameters videoParameters = !fullyDeclared && kind == Task.Kind.VIDEO_GENERATION
                 ? VideoGenerationParameters.parse(parametersForControls)
                 : null;
+        if (studio && videoParameters != null && VideoGenerationParameters.AUTO_ASPECT_RATIO
+                .equals(videoParameters.aspectRatio())
+                && (comfy == null || comfy.maps(ComfyUiWorkflowDefinition.Source.WIDTH))
+                && !(MiniMaxH3Protocol.ADAPTER_ID.equals(binding.adapterId())
+                        && draft.videoInputMode() != MediaDraft.VideoInputMode.TEXT)) {
+            videoParameters = new VideoGenerationParameters(fallbackAspectRatio.get(), videoParameters.videoResolution());
+        }
         if (KlingProtocol.IMAGE_ADAPTER_ID.equals(binding.adapterId())
                 || KlingProtocol.VIDEO_ADAPTER_ID.equals(binding.adapterId())) {
             KlingProtocol.validatePrompt(renderedPrompt, kind == Task.Kind.VIDEO_GENERATION);
@@ -776,34 +885,34 @@ public class DirectMediaTaskService {
                         .of("api.direct-media-task-service.this-autodl-workflow-requires-first-and-last-frames"));
             String ratio = videoParameters.aspectRatio();
             if (VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
-                ratio = projectAspectRatio(projects.get(ownerId, projectId).aspectRatio());
+                ratio = fallbackAspectRatio.get();
             }
             resolutionTier = AutoDlWorkflows.selectedResolution(configuredSettings, videoParameters.videoResolution());
             autodlResolution = workflow.resolution(resolutionTier, ratio);
         }
         return new PreparedMedia(target, canvasItem, draft, kind, binding, definition,
                 dynamicParameters, imageParameters, videoParameters, duration, configuredSettings,
-                renderedPrompt, userRenderedPrompt, autodlResolution, resolutionTier, style, comfyValues, kling,
+                renderedPrompt, userRenderedPrompt, autodlResolution, resolutionTier, style, comfy, comfyValues, kling,
                 nativeProfile,
-                characters.getObject().frozenBindings(ownerId, projectId, canvasItem.id()).deepCopy(),
-                mapper.valueToTree(characters.getObject().frozenContribution(ownerId, projectId, canvasItem.id())),
-                linkedPrompts);
+                studio ? null : characters.getObject().frozenBindings(ownerId, projectId, canvasItem.id()).deepCopy(),
+                studio ? null : mapper.valueToTree(characters.getObject().frozenContribution(ownerId, projectId,
+                        canvasItem.id())),
+                linkedPrompts, fallbackAspectRatio);
     }
 
     private static boolean preparedPromptPresent(ObjectNode parameters, String property, String key) {
         return parameters != null && parameters.path(property).hasNonNull(key);
     }
 
-    private ComfyUiWorkflowDefinition.Dimensions comfyDimensions(UUID ownerId, UUID projectId, PreparedMedia prepared) {
-        if (!ComfyUiWorkflowDefinition.configured(prepared.configuredSettings()))
+    private ComfyUiWorkflowDefinition.Dimensions comfyDimensions(PreparedMedia prepared) {
+        var workflow = prepared.comfy();
+        if (workflow == null)
             return null;
-        var workflow = ComfyUiWorkflowDefinition.parse(mapper,
-                prepared.configuredSettings().get(ComfyUiWorkflowDefinition.SETTINGS_KEY), prepared.kind());
         String ratio = prepared.imageParameters() != null
                 ? prepared.imageParameters().aspectRatio()
                 : prepared.videoParameters().aspectRatio();
         if ("AUTO".equals(ratio) && workflow.maps(ComfyUiWorkflowDefinition.Source.WIDTH))
-            ratio = projectAspectRatio(projects.get(ownerId, projectId).aspectRatio());
+            ratio = prepared.fallbackAspectRatio().get();
         if (!workflow.maps(ComfyUiWorkflowDefinition.Source.WIDTH) && !"AUTO".equals(ratio))
             throw invalid(ApiMessage.of("api.comfy-workflow.invalid", "dimensions"));
         return workflow.dimensions(ratio);
@@ -815,9 +924,10 @@ public class DirectMediaTaskService {
             ObjectNode dynamicParameters, ImageGenerationParameters imageParameters,
             VideoGenerationParameters videoParameters, Integer duration, JsonNode configuredSettings,
             String renderedPrompt, String userRenderedPrompt, String autodlResolution, String resolutionTier,
-            MediaStyleService.Snapshot style, ObjectNode comfyValues, KlingModels.Profile kling,
+            MediaStyleService.Snapshot style, ComfyUiWorkflowDefinition comfy, ObjectNode comfyValues,
+            KlingModels.Profile kling,
             NativeMediaProfiles.Selection nativeProfile, JsonNode characterBindings,
-            JsonNode characterContribution, List<PromptInput> promptInputs) {
+            JsonNode characterContribution, List<PromptInput> promptInputs, Supplier<String> fallbackAspectRatio) {
     }
 
     private ObjectNode nativeProviderParameters(PreparedMedia prepared) {
@@ -839,10 +949,10 @@ public class DirectMediaTaskService {
             throw NativeMediaProfiles.invalid();
     }
 
-    private java.math.BigDecimal nativeBillableInputSeconds(UUID owner, UUID project, PreparedMedia prepared) {
+    private BigDecimal nativeBillableInputSeconds(UUID owner, UUID project, PreparedMedia prepared) {
         var selection = prepared.nativeProfile();
         if (selection == null)
-            return java.math.BigDecimal.ZERO;
+            return BigDecimal.ZERO;
         var values = prepared.dynamicParameters().path(NativeMediaProtocol.VALUES_PROPERTY);
         java.util.Map<String, Asset> inputs = new java.util.HashMap<>();
         for (var field : selection.inputs())
@@ -854,6 +964,8 @@ public class DirectMediaTaskService {
                                 UUID.fromString(version.content().path("assetId").asText()),
                                 Asset.MediaKind.valueOf(field.type().name())));
             }
+        if (prepared.canvasItem() == null)
+            selection.protocol().validatePrepared(selection.profile(), values, inputs);
         return selection.protocol().billableInputSeconds(selection.profile(), values, inputs);
     }
 
@@ -901,7 +1013,7 @@ public class DirectMediaTaskService {
     }
 
     /** Resolve project-dependent AUTO before queueing; workers must not read a later project edit. */
-    private ObjectNode fixedVideoProviderParameters(UUID ownerId, UUID projectId, PreparedMedia prepared) {
+    private ObjectNode fixedVideoProviderParameters(PreparedMedia prepared) {
         String adapter = prepared.binding().adapterId();
         if (!MediaAdapterRegistry.SEEDANCE_2.equals(adapter)
                 && !("COMFY_VIDEO_V1".equals(adapter)
@@ -909,7 +1021,7 @@ public class DirectMediaTaskService {
             return null;
         String ratio = prepared.videoParameters().aspectRatio();
         if (VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio))
-            ratio = projectAspectRatio(projects.get(ownerId, projectId).aspectRatio());
+            ratio = prepared.fallbackAspectRatio().get();
         return mapper.createObjectNode().put("aspectRatio", ratio);
     }
 
@@ -994,10 +1106,10 @@ public class DirectMediaTaskService {
         snapshot.set("promptInputs", mapper.valueToTree(prepared.promptInputs()));
         snapshot.set("style", mapper.valueToTree(prepared.style()));
         snapshot.set("parameters", effectiveParameters);
-        var comfyDimensions = comfyDimensions(ownerId, projectId, prepared);
+        var comfyDimensions = comfyDimensions(prepared);
         if (comfyDimensions != null)
             snapshot.set("providerParameters", comfyProviderParameters(prepared, comfyDimensions));
-        var fixedVideoParameters = fixedVideoProviderParameters(ownerId, projectId, prepared);
+        var fixedVideoParameters = fixedVideoProviderParameters(prepared);
         if (fixedVideoParameters != null)
             snapshot.set("providerParameters", fixedVideoParameters);
         if (prepared.kling() != null)
@@ -1739,6 +1851,11 @@ public class DirectMediaTaskService {
     /** Reject known protocol limits before creating a task or reserving usage. */
     private void validateReferenceAssets(UUID ownerId, UUID projectId, MediaDraft draft,
             MediaCapabilityBinding binding) {
+        validateReferenceAssets(ownerId, projectId, draft, binding, null);
+    }
+
+    private void validateReferenceAssets(UUID ownerId, UUID projectId, MediaDraft draft,
+            MediaCapabilityBinding binding, ObjectNode effectiveDynamicParameters) {
         for (var input : draft.mediaInputs()) {
             if (MediaDraftService.mediaKind(input.role()) == Artifact.Kind.IMAGE)
                 requireStaticImage(ownerId, projectId,
@@ -1773,9 +1890,11 @@ public class DirectMediaTaskService {
         }
         var nativeProfile = capabilities.nativeProfile(binding);
         if (nativeProfile != null) {
-            JsonNode values = NativeMediaProfiles.effectiveValues(nativeProfile,
-                    capabilities.parameters(binding, draft.parameters()), draft.prompt(), draft.durationSeconds(),
-                    mapper);
+            JsonNode values = effectiveDynamicParameters == null
+                    ? NativeMediaProfiles.effectiveValues(nativeProfile,
+                            capabilities.parameters(binding, draft.parameters()), draft.prompt(), draft.durationSeconds(),
+                            mapper)
+                    : effectiveDynamicParameters.path(NativeMediaProtocol.VALUES_PROPERTY);
             for (var field : nativeProfile.inputs())
                 if (field.media() && NativeMediaProfiles.present(values, field.key())) {
                     var version = artifacts.requireMediaVersionForTask(ownerId, projectId,
@@ -1791,9 +1910,10 @@ public class DirectMediaTaskService {
         }
         var klingProfile = capabilities.klingProfile(binding);
         if (klingProfile != null) {
-            JsonNode values = KlingModels.effectiveValues(klingProfile,
-                    capabilities.parameters(binding, draft.parameters()),
-                    draft.prompt(), draft.durationSeconds(), mapper);
+            JsonNode values = effectiveDynamicParameters == null
+                    ? KlingModels.effectiveValues(klingProfile, capabilities.parameters(binding, draft.parameters()),
+                            draft.prompt(), draft.durationSeconds(), mapper)
+                    : effectiveDynamicParameters.path(KlingModels.VALUES_PROPERTY);
             for (var field : KlingModels.inputs(klingProfile))
                 if (field.media() && KlingModels.present(values, field.key())) {
                     UUID versionId = UUID.fromString(values.path(field.key()).asText());

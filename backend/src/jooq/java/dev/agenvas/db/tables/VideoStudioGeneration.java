@@ -109,10 +109,10 @@ public class VideoStudioGeneration extends TableImpl<VideoStudioGenerationRecord
 
     /**
      * The column <code>public.video_studio_generation.request_json</code>.
-     * Versioned frozen capability, prompt, parameters and exact frame
+     * Versioned frozen capability, prompt, creator parameters and exact media
      * references
      */
-    public final TableField<VideoStudioGenerationRecord, JSONB> REQUEST_JSON = createField(DSL.name("request_json"), SQLDataType.JSONB.nullable(false), this, "Versioned frozen capability, prompt, parameters and exact frame references");
+    public final TableField<VideoStudioGenerationRecord, JSONB> REQUEST_JSON = createField(DSL.name("request_json"), SQLDataType.JSONB.nullable(false), this, "Versioned frozen capability, prompt, creator parameters and exact media references");
 
     /**
      * The column <code>public.video_studio_generation.created_at</code>.
@@ -239,7 +239,7 @@ public class VideoStudioGeneration extends TableImpl<VideoStudioGenerationRecord
             Internal.createCheck(this, DSL.name("ck_video_studio_generation_command"), "(((length(btrim((command_key)::text)) >= 1) AND (length(btrim((command_key)::text)) <= 160)))", true),
             Internal.createCheck(this, DSL.name("ck_video_studio_generation_hash"), "((request_hash ~ '^[0-9a-f]{64}$'::text))", true),
             Internal.createCheck(this, DSL.name("ck_video_studio_generation_purpose"), "(((project_purpose)::text = 'VIDEO_STUDIO'::text))", true),
-            Internal.createCheck(this, DSL.name("ck_video_studio_generation_request"), "(COALESCE(((jsonb_typeof(request_json) = 'object'::text) AND ((request_json -> 'schemaVersion'::text) = '1'::jsonb)), false))", true)
+            Internal.createCheck(this, DSL.name("ck_video_studio_generation_request"), "(COALESCE(((jsonb_typeof(request_json) = 'object'::text) AND (((request_json -> 'schemaVersion'::text) = '1'::jsonb) OR (((request_json -> 'schemaVersion'::text) = '2'::jsonb) AND (jsonb_typeof((request_json -> 'references'::text)) = 'array'::text) AND (jsonb_typeof((request_json -> 'dynamicValues'::text)) = 'object'::text)))), false))", true)
         );
     }
 

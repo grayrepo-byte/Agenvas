@@ -5,7 +5,12 @@ import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { VideoStudioCapability, VideoStudioFrame, VideoStudioGeneration } from "../../shared/api/videoStudio";
+import type {
+  VideoStudioCapability,
+  VideoStudioFrame,
+  VideoStudioGeneration,
+  VideoStudioReferenceAsset,
+} from "../../shared/api/videoStudio";
 import { t } from "../../shared/i18n";
 import { PageShell } from "../../shared/ui/PageShell";
 import { server } from "../../test/server";
@@ -23,11 +28,17 @@ const MODEL: VideoStudioCapability = {
   modes: ["TEXT", "START_END"],
   defaultMode: "TEXT",
   supportsEndFrame: true,
+  requiresEndFrame: false,
   minDurationSeconds: 3,
   maxDurationSeconds: 12,
   defaultDurationSeconds: 5,
   aspectRatios: ["16:9", "9:16"],
   defaultAspectRatio: "16:9",
+  videoResolutions: [],
+  defaultVideoResolution: null,
+  referenceLimits: { image: 0, video: 0, audio: 0 },
+  fields: null,
+  defaultDynamicValues: {},
 };
 const FIRST: VideoStudioFrame = {
   projectId: PROJECT,
@@ -52,6 +63,9 @@ const SAVED: VideoStudioGeneration = {
   prompt: "Original saved prompt",
   durationSeconds: 8,
   aspectRatio: "9:16",
+  videoResolution: null,
+  dynamicValues: {},
+  references: [],
   startFrame: FIRST,
   endFrame: LAST,
   createdAt: "2026-11-19T08:00:00Z",
@@ -331,7 +345,7 @@ it("restores the prompt source, not a later preview, only after both original fr
   expect(checked).toHaveBeenCalledTimes(4);
   expect(prompt()).toHaveValue(SAVED.prompt);
   expect(screen.getByRole("spinbutton", { name: t("videoStudio.seconds") })).toHaveValue(SAVED.durationSeconds);
-  expect(screen.getByRole("combobox", { name: t("media.editor.aspectRatio") })).toHaveTextContent(SAVED.aspectRatio);
+  expect(screen.getByRole("combobox", { name: t("media.editor.aspectRatio") })).toHaveValue("9:16");
   expect(screen.getByRole("img", { name: t("videoStudio.startFrame") })).toHaveAttribute(
     "src",
     expect.stringContaining(FIRST.assetId),
@@ -423,4 +437,194 @@ it("ignores a delayed restore after typing and clears unsaved drafts on sign-out
   first.unmount();
   show();
   expect(await screen.findByRole("textbox", { name: t("imageStudio.prompt") })).toHaveValue("");
+});
+
+it("preserves mixed exact versions across prompt-only selection, HEAD-checked restore, and a lost receipt", async () => {
+  const model: VideoStudioCapability = {
+    ...MODEL,
+    modes: ["TEXT", "GENERAL_REFERENCE"],
+    defaultMode: "GENERAL_REFERENCE",
+    minDurationSeconds: null,
+    maxDurationSeconds: null,
+    defaultDurationSeconds: null,
+    aspectRatios: [],
+    defaultAspectRatio: null,
+    videoResolutions: ["480p", "720p"],
+    defaultVideoResolution: "480p",
+    referenceLimits: { image: 1, video: 1, audio: 1 },
+  };
+  const refs: VideoStudioReferenceAsset[] = (["IMAGE", "VIDEO", "AUDIO"] as const).map((kind, index) => ({
+    ...FIRST,
+    assetId: `mixed-asset-${kind}`,
+    artifactId: `mixed-artifact-${kind}`,
+    versionId: `mixed-version-${kind}`,
+    kind,
+    fieldKey: null,
+    durationMs: index ? 1_000 : null,
+    contentType: ["image/png", "video/mp4", "audio/mpeg"][index]!,
+  }));
+  const saved: VideoStudioGeneration = {
+    ...SAVED,
+    mode: "GENERAL_REFERENCE",
+    aspectRatio: null,
+    durationSeconds: null,
+    videoResolution: "720p",
+    startFrame: null,
+    endFrame: null,
+    references: refs,
+  };
+  const uploaded = { ...refs[0]!, versionId: "new-image-version", assetId: "new-image-asset" };
+  const head = vi.fn();
+  const submitted: { key: string | null; body: string }[] = [];
+  const fetchWithMsw = globalThis.fetch;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    if (input === `${BASE}/references/IMAGE`) return HttpResponse.json(uploaded, { status: 201 });
+    return fetchWithMsw(input, init);
+  });
+  server.use(
+    http.get(`${BASE}/context`, () => catalog([model])),
+    http.get(`${BASE}/generations`, () => page([saved])),
+    http.get(`${BASE}/generations/${saved.id}`, () => HttpResponse.json(saved)),
+    http.head(`/api/v1/projects/${PROJECT}/assets/:id/content`, ({ params }) => {
+      head(params.id);
+      return new HttpResponse(null);
+    }),
+    http.post(`${BASE}/generations`, async ({ request }) => {
+      submitted.push({ key: request.headers.get("Idempotency-Key"), body: await request.text() });
+      return submitted.length === 1 ? HttpResponse.error() : HttpResponse.json(saved, { status: 201 });
+    }),
+  );
+  show();
+  const user = userEvent.setup();
+  const upload = await screen.findByLabelText(`${t("media.runningHub.uploadNamed", { 0: t("common.image") })} (0/1)`);
+  await user.upload(upload, new File(["synthetic"], "replacement.png", { type: "image/png" }));
+  const image = t("templates.numberedImage", { 0: 1 });
+  expect(await screen.findByRole("img", { name: image })).toHaveAttribute(
+    "src",
+    expect.stringContaining(uploaded.assetId),
+  );
+  expect(upload).toBeDisabled();
+  await user.click(await screen.findByRole("button", { name: /Original saved prompt/ }));
+  expect(prompt()).toHaveValue(saved.prompt);
+  expect(screen.getByRole("img", { name: image })).toHaveAttribute("src", expect.stringContaining(uploaded.assetId));
+  expect(screen.getByRole("combobox", { name: t("media.editor.resolution") })).toHaveTextContent("480p");
+  await user.click(screen.getByRole("button", { name: t("videoStudio.restoreSourceSettings") }));
+  await waitFor(() =>
+    expect(screen.getByRole("img", { name: image })).toHaveAttribute("src", expect.stringContaining(refs[0]!.assetId)),
+  );
+  expect(head.mock.calls.flat().sort()).toEqual(refs.map(ref => ref.assetId).sort());
+  const list = screen.getByRole("list", { name: t("common.mixedReference") });
+  expect(within(list).getAllByRole("listitem")).toHaveLength(3);
+  expect(list.querySelector("video")).toHaveAttribute("preload", "none");
+  expect(list.querySelector("audio")).toHaveAttribute("preload", "none");
+  expect(screen.queryByRole("spinbutton", { name: t("videoStudio.seconds") })).not.toBeInTheDocument();
+  expect(list.querySelector("video")).toHaveAttribute("src", expect.stringContaining(refs[1]!.assetId));
+  await user.click(generate());
+  const retry = await screen.findByRole("button", { name: t("imageStudio.retryAcceptance") });
+  expect(within(list).getByRole("button", { name: t("videoStudio.removeFrame", { 0: image }) })).toBeDisabled();
+  await user.click(retry);
+  await waitFor(() => expect(submitted).toHaveLength(2));
+  expect(submitted[0]!.key).toBeTruthy();
+  expect(submitted[1]).toEqual(submitted[0]);
+  expect(JSON.parse(submitted[0]!.body)).toEqual({
+    capabilityId: model.capabilityId,
+    capabilityVersion: model.capabilityVersion,
+    mode: "GENERAL_REFERENCE",
+    prompt: saved.prompt,
+    durationSeconds: null,
+    videoResolution: "720p",
+    references: refs.map(({ kind, versionId }) => ({ kind, versionId })),
+  });
+});
+
+it("binds a named reference to its workflow slot and confirms when a parameter would drop it", async () => {
+  const model: VideoStudioCapability = {
+    ...MODEL,
+    capabilityId: "named-workflow-model",
+    name: "Published named workflow",
+    modes: ["GENERAL_REFERENCE"],
+    defaultMode: "GENERAL_REFERENCE",
+    minDurationSeconds: null,
+    maxDurationSeconds: null,
+    defaultDurationSeconds: null,
+    aspectRatios: [],
+    defaultAspectRatio: null,
+    referenceLimits: { image: 0, video: 1, audio: 0 },
+    defaultDynamicValues: { useClip: true },
+    fields: [
+      {
+        key: "useClip",
+        label: "Use source clip",
+        source: "PARAMETER",
+        type: "BOOLEAN",
+        defaultValue: true,
+        required: false,
+        advanced: false,
+      },
+      {
+        key: "clip",
+        label: "Source clip",
+        source: "PARAMETER",
+        type: "VIDEO",
+        required: true,
+        advanced: false,
+        enabledWhen: { field: "useClip", value: true },
+      },
+    ],
+  };
+  const clip: VideoStudioReferenceAsset = {
+    ...FIRST,
+    kind: "VIDEO",
+    fieldKey: null,
+    durationMs: 1_000,
+    contentType: "video/mp4",
+  };
+  const posted = vi.fn();
+  const uploaded = vi.fn();
+  const fetchWithMsw = globalThis.fetch;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    if (input === `${BASE}/references/VIDEO`) {
+      uploaded((init?.body as FormData).get("file"));
+      return HttpResponse.json(clip, { status: 201 });
+    }
+    return fetchWithMsw(input, init);
+  });
+  server.use(
+    http.get(`${BASE}/context`, () => catalog([MODEL, model])),
+    http.get(`${BASE}/generations/${SAVED.id}`, () => HttpResponse.json(SAVED)),
+    http.post(`${BASE}/generations`, async ({ request }) => {
+      posted(await request.json());
+      return HttpResponse.json(SAVED, { status: 201 });
+    }),
+  );
+  show();
+  const user = userEvent.setup();
+  await select(user, t("common.model"), /Published named workflow/);
+  expect(await screen.findByText(t("media.runningHub.requiredField", { 0: "Source clip" }))).toBeVisible();
+  expect(generate()).toBeDisabled();
+  await user.upload(
+    screen.getByLabelText(t("media.runningHub.uploadNamed", { 0: "Source clip" })),
+    new File(["synthetic"], "clip.mp4", { type: "video/mp4" }),
+  );
+  await waitFor(() => expect(uploaded).toHaveBeenCalledOnce());
+  expect(await screen.findByRole("list", { name: t("common.mixedReference") })).toHaveTextContent("Source clip");
+  await waitFor(() => expect(generate()).toBeEnabled());
+  await select(user, "Use source clip", t("common.disabled"));
+  const dialog = within(await screen.findByRole("dialog", { name: t("videoStudio.changeSettings") }));
+  expect(dialog.getByRole("list")).toHaveTextContent("Source clip");
+  await user.click(dialog.getByRole("button", { name: t("common.cancel") }));
+  expect(screen.getByRole("combobox", { name: "Use source clip" })).toHaveTextContent(t("common.enabled"));
+  expect(within(screen.getByRole("list", { name: t("common.mixedReference") })).getByText("Source clip")).toBeVisible();
+  await user.click(generate());
+  await waitFor(() =>
+    expect(posted).toHaveBeenCalledExactlyOnceWith({
+      capabilityId: model.capabilityId,
+      capabilityVersion: model.capabilityVersion,
+      mode: "GENERAL_REFERENCE",
+      prompt: "",
+      durationSeconds: null,
+      dynamicValues: { useClip: true },
+      references: [{ kind: "VIDEO", versionId: clip.versionId, fieldKey: "clip" }],
+    }),
+  );
 });
