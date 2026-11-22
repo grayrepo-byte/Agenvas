@@ -875,11 +875,7 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
               ) : null}
             </div>
             <Button className="image-studio-generate" type="submit" disabled={!canGenerate} aria-busy={accepting}>
-              {accepting ? (
-                <CircleNotch className="image-studio-spinner" data-icon="inline-start" aria-hidden="true" />
-              ) : (
-                <Sparkle data-icon="inline-start" weight="fill" aria-hidden="true" />
-              )}
+              <Sparkle data-icon="inline-start" weight="fill" aria-hidden="true" />
               {accepting ? t("imageStudio.submitting") : t("imageStudio.generate")}
             </Button>
           </div>

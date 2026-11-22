@@ -247,7 +247,6 @@
   text-align: center;
 }
 .image-studio-iris {
-  position: relative;
   display: grid;
   place-items: center;
   width: clamp(48px, 15cqh, 84px);
@@ -261,14 +260,6 @@
 .image-studio-iris svg {
   width: 52%;
   height: 52%;
-}
-.image-studio-generation-frame[data-tone="working"] .image-studio-iris::after {
-  content: "";
-  position: absolute;
-  inset: -4px;
-  border: 2px solid transparent;
-  border-block-start-color: var(--studio-status-ink);
-  border-radius: inherit;
 }
 .image-studio-frame-content h2 {
   color: var(--ui-text);
@@ -779,21 +770,28 @@
     margin-block-end: auto;
   }
   .image-studio-result-tools {
-    gap: 8px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
   }
-  .image-studio-filmstrip,
+  .image-studio-filmstrip {
+    --studio-film-gap: 4px;
+    gap: var(--studio-film-gap);
+  }
   .image-studio-result-actions {
     gap: 4px;
   }
   .image-studio-result-actions [data-ui-button] {
-    width: 30px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
   }
   .image-studio-hero .image-studio-image-button[data-ui-button] {
     border-radius: 10px;
   }
   .image-studio-filmstrip .image-studio-variant[data-ui-button],
   .image-studio-slot {
+    /* Fit the four requested positions; provider extras can still scroll. */
+    max-width: calc((100% - 3 * var(--studio-film-gap)) / 4);
     border-radius: 6px;
   }
   .image-studio-slot-number {
@@ -846,8 +844,7 @@
   }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .image-studio-spinner,
-  .image-studio-generation-frame[data-tone="working"] .image-studio-iris::after {
+  .image-studio-spinner {
     animation: image-studio-turn 1.8s linear infinite;
   }
   .image-studio-generation-frame[data-tone="working"]::before {
@@ -865,9 +862,6 @@
   }
   .image-studio-image-button:not([data-first-photo]) .image-studio-photo img {
     transition: opacity 320ms var(--ui-ease-out);
-  }
-  .image-studio-slot[data-tone="working"] > svg {
-    animation: image-studio-pulse 2.4s ease-in-out infinite alternate;
   }
   .image-studio-image-button:not([data-first-photo]) .image-studio-photo,
   .image-studio-variant img {
@@ -893,14 +887,6 @@
   }
   .image-studio-variant[aria-pressed="false"]:hover img {
     transform: scale(1.05);
-  }
-}
-@keyframes image-studio-pulse {
-  from {
-    opacity: 0.55;
-  }
-  to {
-    opacity: 1;
   }
 }
 @keyframes image-studio-turn {

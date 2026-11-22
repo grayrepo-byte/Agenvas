@@ -15,6 +15,7 @@
 - **WHEN** 用户显式提交新的生图请求
 - **THEN** 主图区立即显示本次请求的取景框，胶片按请求数量显示编号占位，不继续显示上一批的照片
 - **AND** 取景框反馈已知请求与任务状态，不显示模拟进度百分比
+- **AND** 提交和等待生成期间，仅取景框显示等待扫描，胶片占位和受理按钮不循环播放动效
 
 #### Scenario: The first archived result has no loaded image yet
 
@@ -45,6 +46,16 @@
 - **WHEN** 设备开启减少动态效果，且当前批次有首张可显示的图片
 - **THEN** 工作台直接切换到照片，不播放淡入淡出或编号短亮
 - **AND** 批次状态、已出图张数、胶片编号和预览操作仍可用
+
+### Requirement: Keep batch variants visible in the narrow layout
+
+窄屏工作台 MUST 为同批胶片预留独立一行，且不得让结果操作占用该行宽度。
+
+#### Scenario: Browse a four-image batch on a phone
+
+- **WHEN** 窄屏工作台展示普通四张图批次的胶片（包括尚未生成的编号位置）
+- **THEN** 四个位置均无需横向滚动即可看见，回填参数、放大和下载位于胶片下方的独立操作行
+- **AND** 超出可视宽度的原生额外结果仍可横向浏览
 
 ### Requirement: Preview failure preserves generation outcomes
 

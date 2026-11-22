@@ -179,6 +179,17 @@ try {
       });
     });
   }
+  async function waitingMotion() {
+    return page(() =>
+      [".image-studio-stage", ".image-studio-generate"].flatMap(selector =>
+        document
+          .querySelector(selector)
+          .getAnimations({ subtree: true })
+          .filter(animation => animation.effect.getTiming().iterations === Infinity)
+          .map(animation => animation.animationName),
+      ),
+    );
+  }
   async function capture(name) {
     if (!screenshots) return;
     const { data } = await cdp("Page.captureScreenshot", { format: "png" });
@@ -193,6 +204,9 @@ try {
       const layout = await page(() => {
         const input = document.querySelector("textarea");
         const css = getComputedStyle(input);
+        const strip = document.querySelector(".image-studio-filmstrip");
+        const bounds = strip.getBoundingClientRect();
+        const actions = [...document.querySelector(".image-studio-result-actions").children];
         return {
           overflow: document.documentElement.scrollWidth > innerWidth,
           sidebar: !!document.querySelector(".app-sidebar"),
@@ -202,6 +216,14 @@ try {
           fit: getComputedStyle(document.querySelector(".image-studio-image-button img")).objectFit,
           refs: [...document.querySelectorAll(".image-studio-variant img")].map(i => i.getAttribute("src")),
           header: document.querySelector(".image-studio-header").getBoundingClientRect().height,
+          allVariantsVisible: [...strip.children].every(variant => {
+            const { left, right } = variant.getBoundingClientRect();
+            return left >= bounds.left && right <= bounds.right;
+          }),
+          touchActionsOnOwnRow: actions.every(action => {
+            const { top, width, height } = action.getBoundingClientRect();
+            return top >= bounds.bottom && width >= 44 && height >= 44;
+          }),
         };
       });
       assert.equal(layout.overflow, false, `${viewport.width}/${locale}: no page overflow`);
@@ -209,6 +231,10 @@ try {
       assert.equal(layout.rows, 3);
       assert.ok(layout.contentHeight >= layout.line * 3 - 1, "Three editable lines stay visible");
       assert.equal(layout.fit, "contain");
+      assert.equal(layout.allVariantsVisible, true, `${viewport.width}/${locale}: four variants fit without scrolling`);
+      if (viewport.width <= 640)
+        assert.equal(layout.touchActionsOnOwnRow, true, "Narrow actions stay below the filmstrip with 44px targets");
+      if (viewport.width === 390 && locale === "zh") await capture("studio-mobile-gallery.png");
       assert.ok(
         layout.refs.every(
           url => url.startsWith("/api/v1/projects/synthetic-image-studio/assets/") && url.endsWith("/thumbnail"),
@@ -358,20 +384,13 @@ try {
       };
     });
     assert.ok(frame.width >= 150 && frame.height >= 70 && frame.titleFits && !frame.overflow, JSON.stringify(frame));
-    assert.equal(frame.scan, "image-studio-scan");
+    assert.deepEqual(await waitingMotion(), ["image-studio-scan"], "Only the viewfinder moves during submission");
     await cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
     await waitFor(
       () =>
         getComputedStyle(document.querySelector(".image-studio-generation-frame"), "::before").animationName === "none",
     );
-    assert.equal(
-      await page(() => getComputedStyle(document.querySelector(".image-studio-iris"), "::after").animationName),
-      "none",
-    );
-    assert.equal(
-      await page(() => getComputedStyle(document.querySelector(".image-studio-generate svg")).animationName),
-      "none",
-    );
+    assert.deepEqual(await waitingMotion(), [], "Reduced motion also keeps the slots and submit button still");
     await page(() => window.__imageStudio.acknowledge());
     await waitFor(() => document.querySelector(".image-studio-generation-frame h2")?.textContent === "排队中");
     await page(() => window.__imageStudio.startGeneration());
@@ -486,6 +505,7 @@ try {
     );
     await page(() => window.__imageStudio.acknowledge());
     await waitFor(() => document.querySelector(".image-studio-generation-frame h2")?.textContent === "排队中");
+    assert.deepEqual(await waitingMotion(), ["image-studio-scan"], "Queued batches keep one waiting animation");
     const showThumbnail = holdMedia(`${syntheticMedia}${shape}-103/thumbnail`);
     const showOriginal = holdMedia(`${syntheticMedia}${shape}-103/content`);
     await page(() => window.__imageStudio.finishNextOutput());
@@ -494,11 +514,10 @@ try {
       await page(() => document.querySelector(".image-studio-gallery-summary").textContent),
       /已出图 1 \/ 4/,
     );
-    assert.equal(
-      await page(
-        () => getComputedStyle(document.querySelector(".image-studio-generation-frame"), "::before").animationName,
-      ),
-      "none",
+    assert.deepEqual(
+      await waitingMotion(),
+      [],
+      "The viewfinder stops scanning as soon as an archived image is loading",
     );
     assert.equal(await page(() => document.querySelector(".image-studio-image-button").matches("[inert]")), true);
     await capture(`studio-${shape}-waiting.png`);
