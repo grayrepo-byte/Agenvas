@@ -82,10 +82,7 @@
   gap: clamp(20px, 2.9vw, 48px);
   min-width: 0;
   min-height: 0;
-  padding: clamp(12px, 2.6vh, 32px) clamp(16px, 1.65vw, 30px) 0 var(--studio-gutter);
-}
-.image-studio-workspace:not(:has(.image-studio-history)) {
-  padding-inline-end: var(--studio-gutter);
+  padding: clamp(12px, 2.6vh, 32px) var(--studio-gutter) 0;
 }
 .image-studio-stage {
   display: flex;
@@ -773,6 +770,18 @@
 }
 
 @media (width > 900px) {
+  .image-studio-workspace:has(.image-studio-history) {
+    /* Balance the right rail so the results stay on the editor's centerline. */
+    display: grid;
+    grid-template-columns: var(--studio-rail) minmax(0, 1fr) var(--studio-rail);
+    padding-inline: clamp(16px, 1.65vw, 30px);
+  }
+  .image-studio-workspace:has(.image-studio-history) .image-studio-stage {
+    grid-column: 2;
+  }
+  .image-studio-stage {
+    scrollbar-gutter: stable both-edges;
+  }
   .image-studio-stage > :is(.image-studio-hero, .image-studio-gallery, .image-studio-task-feedback) {
     /* Keep the result column stable when the photo changes aspect ratio. */
     inline-size: min(100%, 960px);

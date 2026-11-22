@@ -68,12 +68,17 @@
 
 ### Requirement: Keep a stable desktop result column
 
-桌面工作台 MUST 将取景区域、胶片和结果操作放在同一个居中的结果栏中。
+桌面工作台 MUST 将取景区域、胶片和结果操作放在同一个结果栏中，并使结果栏与底部编辑栏沿整页中轴对齐。
 
 #### Scenario: Change between landscape and portrait results
 
 - **WHEN** 桌面用户查看不同宽高比的生成图
 - **THEN** 图片按原比例完整显示，胶片和结果操作不因图片变窄而缩进
+
+#### Scenario: Open or close the desktop history rail
+
+- **WHEN** 用户展开或收起右侧历史栏
+- **THEN** 结果栏和底部编辑栏保持相同的水平中心，历史栏不覆盖主内容
 
 ### Requirement: Compare archived variants in enlarged preview
 

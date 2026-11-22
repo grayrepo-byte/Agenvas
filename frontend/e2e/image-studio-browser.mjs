@@ -411,6 +411,7 @@ try {
         const hero = rect(".image-studio-hero");
         const gallery = rect(".image-studio-gallery");
         const photo = i.getBoundingClientRect();
+        const editor = rect(".image-studio-controls");
         return {
           width: i.clientWidth,
           height: i.clientHeight,
@@ -419,6 +420,7 @@ try {
           overflow: document.documentElement.scrollWidth > innerWidth,
           resultWidth: gallery.width,
           centeredResult:
+            Math.abs(hero.left + hero.right - editor.left - editor.right) < 2 &&
             Math.abs(hero.left - gallery.left) < 1 &&
             Math.abs(hero.right - gallery.right) < 1 &&
             Math.abs(photo.left + photo.width / 2 - gallery.left - gallery.width / 2) < 1 &&
@@ -431,10 +433,20 @@ try {
       assert.ok(image.width > 40 && image.height > 70);
       assert.ok(Math.abs(image.ratio - (scenario === "portrait" ? 9 / 16 : 16 / 9)) < 0.01);
       if (viewport.width > 900) {
-        assert.equal(image.centeredResult, true, `${scenario}: photo, filmstrip and actions share the result column`);
+        assert.equal(image.centeredResult, true, `${scenario}: photo, filmstrip and editor share the page center`);
         desktopResultWidth ??= image.resultWidth;
         assert.equal(image.resultWidth, desktopResultWidth, "The desktop result column stays the same for both ratios");
-        if (scenario === "landscape") await capture("studio-desktop-alignment.png");
+        if (scenario === "landscape") {
+          await capture("studio-desktop-alignment.png");
+          await click(".image-studio-history-toggle");
+          await waitFor(() => !document.querySelector(".image-studio-history"));
+          const offset = await page(() => {
+            const photo = document.querySelector(".image-studio-image-button").getBoundingClientRect();
+            const editor = document.querySelector(".image-studio-controls").getBoundingClientRect();
+            return (photo.left + photo.right - editor.left - editor.right) / 2;
+          });
+          assert.ok(Math.abs(offset) < 1, `Closing history must not shift the main axis (offset: ${offset}px)`);
+        }
       }
       await page(() => document.querySelector(".image-studio-generate").scrollIntoView({ block: "nearest" }));
       assert.equal(
