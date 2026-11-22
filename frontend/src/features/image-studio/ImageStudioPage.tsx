@@ -423,14 +423,12 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
         const status = batchStatus(row);
         const date = formatDate(row.createdAt, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
         return (
-          <div className="relative" key={row.id}>
+          <div className="image-studio-history-row" key={row.id}>
             <Button
               type="button"
               variant="ghost"
               className="image-studio-history-item"
               data-batch-id={row.id}
-              data-has-image={!!result}
-              data-complete={status === "imageStudio.status.succeeded"}
               aria-pressed={!viewingSubmission && selectedId === row.id}
               onClick={() => {
                 chooseBatch(row, !!result);

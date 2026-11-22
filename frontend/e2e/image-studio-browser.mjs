@@ -235,6 +235,26 @@ try {
       if (viewport.width <= 640)
         assert.equal(layout.touchActionsOnOwnRow, true, "Narrow actions stay below the filmstrip with 44px targets");
       if (viewport.width === 390 && locale === "zh") await capture("studio-mobile-gallery.png");
+      if (viewport.width > 900 && locale === "zh") {
+        const metadataVisible = await page(() => {
+          const rows = [...document.querySelectorAll(".image-studio-history .image-studio-history-item")];
+          return (
+            rows.length > 0 &&
+            rows.every(row => {
+              const thumb = row.querySelector(".image-studio-history-thumb").getBoundingClientRect();
+              const caption = row.querySelector(".image-studio-history-caption");
+              return (
+                caption.getBoundingClientRect().top >= thumb.bottom - 1 &&
+                getComputedStyle(caption).opacity === "1" &&
+                caption.querySelector("strong").innerText.trim() &&
+                caption.querySelector("time").getBoundingClientRect().width > 0
+              );
+            })
+          );
+        });
+        assert.equal(metadataVisible, true, "Desktop history shows each prompt and date below its thumbnail");
+        await capture("studio-desktop-history.png");
+      }
       assert.ok(
         layout.refs.every(
           url => url.startsWith("/api/v1/projects/synthetic-image-studio/assets/") && url.endsWith("/thumbnail"),
@@ -331,23 +351,41 @@ try {
         assert.ok((await response.arrayBuffer()).byteLength > 100);
       }
     }
+    let desktopResultWidth;
     for (const scenario of ["portrait", "landscape"]) {
       await navigate(scenario);
       await imageReady(1);
       const image = await page(() => {
         const i = document.querySelector(".image-studio-image-button img");
+        const rect = selector => document.querySelector(selector).getBoundingClientRect();
+        const hero = rect(".image-studio-hero");
+        const gallery = rect(".image-studio-gallery");
+        const photo = i.getBoundingClientRect();
         return {
           width: i.clientWidth,
           height: i.clientHeight,
           ratio: i.naturalWidth / i.naturalHeight,
           fit: getComputedStyle(i).objectFit,
           overflow: document.documentElement.scrollWidth > innerWidth,
+          resultWidth: gallery.width,
+          centeredResult:
+            Math.abs(hero.left - gallery.left) < 1 &&
+            Math.abs(hero.right - gallery.right) < 1 &&
+            Math.abs(photo.left + photo.width / 2 - gallery.left - gallery.width / 2) < 1 &&
+            Math.abs(rect(".image-studio-filmstrip").left - gallery.left) < 1 &&
+            Math.abs(rect(".image-studio-result-actions").right - gallery.right) < 1,
         };
       });
       assert.equal(image.fit, "contain");
       assert.equal(image.overflow, false);
       assert.ok(image.width > 40 && image.height > 70);
       assert.ok(Math.abs(image.ratio - (scenario === "portrait" ? 9 / 16 : 16 / 9)) < 0.01);
+      if (viewport.width > 900) {
+        assert.equal(image.centeredResult, true, `${scenario}: photo, filmstrip and actions share the result column`);
+        desktopResultWidth ??= image.resultWidth;
+        assert.equal(image.resultWidth, desktopResultWidth, "The desktop result column stays the same for both ratios");
+        if (scenario === "landscape") await capture("studio-desktop-alignment.png");
+      }
       await page(() => document.querySelector(".image-studio-generate").scrollIntoView({ block: "nearest" }));
       assert.equal(
         await page(() => {
@@ -435,6 +473,18 @@ try {
     const row = id => `.image-studio-history-item[data-batch-id="${id}"]`;
     const trash = id => `${row(id)} + .image-studio-history-delete`;
     const savedTrash = trash(savedId);
+    const restingDelete = await page(
+      selector => ({
+        opacity: Number(getComputedStyle(document.querySelector(selector)).opacity),
+        finePointer: matchMedia("(hover: hover) and (pointer: fine)").matches,
+      }),
+      savedTrash,
+    );
+    if (viewport.width > 900 && restingDelete.finePointer) {
+      assert.ok(restingDelete.opacity > 0 && restingDelete.opacity < 1, "Desktop deletion is visible but subdued");
+    } else {
+      assert.equal(restingDelete.opacity, 1, "Touch deletion is visible without hover");
+    }
     const dialog = ".image-studio-delete-dialog";
     const cancel = `${dialog} button[data-variant="outline"]`;
     const confirm = `${dialog} button[data-variant="destructive"]`;
@@ -442,6 +492,7 @@ try {
     for (let step = 0; step < 24 && !(await page(s => document.activeElement.matches(s), savedTrash)); step++)
       await key("Tab", "Tab", 9);
     assert.equal(await page(s => document.activeElement.matches(s), savedTrash), true, "Delete is reachable by Tab");
+    assert.equal(await page(s => getComputedStyle(document.querySelector(s)).opacity, savedTrash), "1");
     await key("Enter", "Enter", 13, "\r");
     await waitFor(selector => document.activeElement.matches(selector), cancel);
     assert.equal(await page(s => document.querySelector(s).getAttribute("aria-checked"), checkbox), "false");

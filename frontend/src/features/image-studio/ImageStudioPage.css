@@ -663,6 +663,9 @@
 .image-studio-history-list > * {
   flex: none;
 }
+.image-studio-history-row {
+  position: relative;
+}
 .image-studio-history-list .image-studio-history-item[data-ui-button] {
   display: grid;
   place-items: stretch;
@@ -695,10 +698,6 @@
   background: color-mix(in srgb, var(--ui-photo-backdrop) 92%, transparent);
   color: var(--ui-text);
 }
-.image-studio-history-item[data-has-image="true"][data-complete="true"]:not(:hover, :focus-visible)
-  .image-studio-history-caption {
-  opacity: 0;
-}
 .image-studio-history-number {
   font-family: ui-monospace, monospace;
 }
@@ -730,10 +729,37 @@
   border-radius: 0;
   background: var(--ui-photo-backdrop);
 }
-.image-studio-history-drawer
-  .image-studio-history-item[data-has-image="true"][data-complete="true"]
-  .image-studio-history-caption {
-  opacity: 1;
+.image-studio-history .image-studio-history-item[data-ui-button] {
+  grid-template-columns: minmax(0, 1fr);
+  aspect-ratio: auto;
+}
+.image-studio-history .image-studio-history-thumb {
+  position: static;
+  aspect-ratio: 16/9;
+  overflow: hidden;
+}
+.image-studio-history .image-studio-history-caption {
+  position: static;
+  background: transparent;
+}
+.image-studio-history .image-studio-history-caption small {
+  font-size: 11px;
+}
+.image-studio-history .image-studio-history-number {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .image-studio-history .image-studio-history-row:not(:hover, :focus-within) .image-studio-history-delete {
+    opacity: 0.7;
+  }
+}
+
+@media (width > 900px) {
+  .image-studio-stage > :is(.image-studio-hero, .image-studio-gallery, .image-studio-task-feedback) {
+    /* Keep the result column stable when the photo changes aspect ratio. */
+    inline-size: min(100%, 960px);
+    margin-inline: auto;
+  }
 }
 
 @media (max-width: 900px) {
@@ -873,9 +899,6 @@
   }
   .image-studio-slot-number[data-first-reveal] {
     animation: image-studio-number-reveal var(--studio-first-reveal-duration) var(--ui-ease-out) backwards;
-  }
-  .image-studio-history-caption {
-    transition: opacity var(--ui-duration);
   }
   .image-studio-generate:active:not(:disabled) {
     transform: scale(0.97);

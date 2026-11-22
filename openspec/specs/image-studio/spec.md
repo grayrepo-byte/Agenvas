@@ -57,6 +57,15 @@
 - **THEN** 四个位置均无需横向滚动即可看见，回填参数、放大和下载位于胶片下方的独立操作行
 - **AND** 超出可视宽度的原生额外结果仍可横向浏览
 
+### Requirement: Keep a stable desktop result column
+
+桌面工作台 MUST 将取景区域、胶片和结果操作放在同一个居中的结果栏中。
+
+#### Scenario: Change between landscape and portrait results
+
+- **WHEN** 桌面用户查看不同宽高比的生成图
+- **THEN** 图片按原比例完整显示，胶片和结果操作不因图片变窄而缩进
+
 ### Requirement: Preview failure preserves generation outcomes
 
 工作台 MUST 将浏览器预览失败与生成失败分开；预览失败不得改写服务端任务结果、减少已归档张数或自动触发再次生成。
@@ -76,6 +85,16 @@
 
 - **WHEN** 批次没有归档图片，任务失败、取消、待核实或归档受阻
 - **THEN** 工作台显示对应的批次或任务反馈，不显示正在加载预览，也不播放成功揭晓
+
+### Requirement: Identify desktop history before opening a batch
+
+桌面历史卡片 MUST 在用户打开记录前提供可见的批次摘要。
+
+#### Scenario: Browse history without activating a card
+
+- **WHEN** 用户查看桌面历史而未悬停、聚焦或选中记录
+- **THEN** 卡片在缩略图下方直接显示提示词摘要、生成时间和任务状态
+- **AND** 删除入口不抢占视觉焦点，仍可用鼠标、键盘或触屏访问
 
 ### Requirement: Restore the prompt when opening a historical image
 
