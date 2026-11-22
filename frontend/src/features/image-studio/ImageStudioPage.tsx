@@ -10,6 +10,7 @@ import {
   ArrowsOutSimple,
   Cube,
   Sparkle,
+  Trash,
   X,
 } from "@/shared/ui/icons";
 import {
@@ -21,11 +22,21 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useEffect, useId, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type FormEvent,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { Link } from "react-router";
 import { ApiError, assetContentUrl, assetThumbnailUrl, getCurrentUser } from "../../shared/api/client";
 import {
   createImageStudioBatch,
+  deleteImageStudioBatch,
   getImageStudioBatch,
   getImageStudioContext,
   IMAGE_STUDIO_COUNTS,
@@ -47,7 +58,16 @@ import { Select } from "../../shared/ui/Select";
 import { Button } from "../../shared/ui/primitives/button";
 import { Checkbox } from "../../shared/ui/primitives/checkbox";
 import { Field, FieldLabel } from "../../shared/ui/primitives/field";
-import { Dialog, DialogClose, DialogContent, DialogTitle, DialogTrigger } from "../../shared/ui/primitives/dialog";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../../shared/ui/primitives/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "../../shared/ui/primitives/popover";
 import { Textarea } from "../../shared/ui/primitives/textarea";
 import { MediaPreviewDialog } from "../canvas/MediaPreviewDialog";
@@ -71,7 +91,7 @@ const batchKey = (ownerId: string, batchId?: string) => ["image-studio", ownerId
 function batchOptions(ownerId: string, id?: string) {
   return queryOptions({
     queryKey: batchKey(ownerId, id),
-    queryFn: () => getImageStudioBatch(id!),
+    queryFn: ({ signal }) => getImageStudioBatch(id!, signal),
     enabled: !!id,
     retry: false,
     refetchOnMount: false,
@@ -129,6 +149,13 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
   const { promptBeforeHistory } = draft;
   const update = (patch: Partial<StudioDraft>) => useImageStudioDraftStore.getState().update(ownerId, patch);
   const [preview, setPreview] = useState<StudioPreview | null>(null);
+  const [deletion, setDeletion] = useState<{ id: string; deleteFiles: boolean } | null>(null);
+  const deleteTrigger = useRef<HTMLButtonElement>(null);
+  const cancelDeletion = useRef<HTMLButtonElement>(null);
+  const historyListRef = useRef<HTMLDivElement>(null);
+  const historyToggle = useRef<HTMLButtonElement>(null);
+  const drawerClose = useRef<HTMLButtonElement>(null);
+  const deleteFilesId = useId();
   // Unlike the accepted command, reveal eligibility belongs to this mounted workspace.
   const revealCommand = useRef<string | null>(null);
   const [revealBatchId, setRevealBatchId] = useState<string>();
@@ -145,7 +172,7 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
   });
   const history = useInfiniteQuery({
     queryKey: historyKey(ownerId),
-    queryFn: ({ pageParam }) => listImageStudioBatches(pageParam),
+    queryFn: ({ pageParam, signal }) => listImageStudioBatches(pageParam, signal),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: page => page.nextCursor ?? undefined,
     enabled: context.isSuccess,
@@ -219,6 +246,39 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
         if (revealCommand.current === command.key) revealCommand.current = null;
         update({ command: null, viewingSubmission: false });
       }
+    },
+    retry: false,
+  });
+  const removeBatch = useMutation({
+    mutationFn: deleteImageStudioBatch,
+    onSuccess: async (_, { id }) => {
+      const listKey = historyKey(ownerId);
+      const detailKey = batchKey(ownerId, id);
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: listKey, exact: true }),
+        queryClient.cancelQueries({ queryKey: detailKey, exact: true }),
+      ]);
+      const current = useImageStudioDraftStore.getState().owners[ownerId];
+      const cached = queryClient.getQueryData<typeof history.data>(listKey);
+      const pages = cached?.pages.map(page => ({ ...page, items: page.items.filter(row => row.id !== id) }));
+      if (current) {
+        const awaitingHistory = current.awaitingHistory.filter(batchId => batchId !== id);
+        const selectedVersions = { ...current.selectedVersions };
+        delete selectedVersions[id];
+        const selected = current.selectedBatchId ?? cached?.pages.find(page => page.items.length)?.items[0]?.id;
+        update({
+          selectedVersions,
+          awaitingHistory,
+          ...(selected === id
+            ? { selectedBatchId: pages?.find(page => page.items.length)?.items[0]?.id ?? awaitingHistory[0] ?? null }
+            : {}),
+        });
+      }
+      if (cached && pages) queryClient.setQueryData(listKey, { ...cached, pages });
+      queryClient.removeQueries({ queryKey: detailKey, exact: true });
+      setRevealBatchId(value => (value === id ? undefined : value));
+      setDeletion(null);
+      void queryClient.invalidateQueries({ queryKey: listKey, exact: true });
     },
     retry: false,
   });
@@ -349,7 +409,12 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
   const displayedHistory = [...unlistedQueries.flatMap(query => (query.data ? [query.data] : [])), ...historyRows];
   if (batch && !displayedHistory.some(row => row.id === batch.id)) displayedHistory.unshift(batch);
   const historyList = (onChoose?: () => void) => (
-    <div className="image-studio-history-list">
+    <div className="image-studio-history-list" ref={historyListRef}>
+      {removeBatch.isSuccess ? (
+        <Notice tone="success">
+          {t(removeBatch.variables.deleteFiles ? "imageStudio.deleteFilesQueued" : "imageStudio.batchDeleted")}
+        </Notice>
+      ) : null}
       {narrow && !history.data && contextFailure ? contextFailure : historyFeedback}
       {displayedHistory.map(snapshot => {
         // Detail polling can lead the history list. Use the same version as the hero.
@@ -358,39 +423,55 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
         const status = batchStatus(row);
         const date = formatDate(row.createdAt, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
         return (
-          <Button
-            type="button"
-            variant="ghost"
-            className="image-studio-history-item"
-            key={row.id}
-            data-batch-id={row.id}
-            data-has-image={!!result}
-            data-complete={status === "imageStudio.status.succeeded"}
-            aria-pressed={!viewingSubmission && selectedId === row.id}
-            onClick={() => {
-              chooseBatch(row, !!result);
-              onChoose?.();
-            }}
-            title={[batchReference(row.id), row.prompt, date, t(status)].join(" · ")}
-          >
-            <span className="image-studio-history-thumb">
-              {result ? (
-                <img src={assetThumbnailUrl(row.projectId, result.assetId)} alt="" loading="lazy" />
-              ) : imageStudioBatchActive(row) ? (
-                <CircleNotch className="image-studio-spinner" size={24} aria-hidden="true" />
-              ) : (
-                <ClockCounterClockwise size={24} aria-hidden="true" />
-              )}
-            </span>
-            <span className="image-studio-history-caption">
-              <strong>{row.prompt}</strong>
-              <small>
-                <span className="image-studio-history-number">{batchReference(row.id)}</span>
-                <time dateTime={row.createdAt}>{date}</time>
-                <span>{t(status)}</span>
-              </small>
-            </span>
-          </Button>
+          <div className="relative" key={row.id}>
+            <Button
+              type="button"
+              variant="ghost"
+              className="image-studio-history-item"
+              data-batch-id={row.id}
+              data-has-image={!!result}
+              data-complete={status === "imageStudio.status.succeeded"}
+              aria-pressed={!viewingSubmission && selectedId === row.id}
+              onClick={() => {
+                chooseBatch(row, !!result);
+                onChoose?.();
+              }}
+              title={[batchReference(row.id), row.prompt, date, t(status)].join(" · ")}
+            >
+              <span className="image-studio-history-thumb">
+                {result ? (
+                  <img src={assetThumbnailUrl(row.projectId, result.assetId)} alt="" loading="lazy" />
+                ) : imageStudioBatchActive(row) ? (
+                  <CircleNotch className="image-studio-spinner" size={24} aria-hidden="true" />
+                ) : (
+                  <ClockCounterClockwise size={24} aria-hidden="true" />
+                )}
+              </span>
+              <span className="image-studio-history-caption">
+                <strong>{row.prompt}</strong>
+                <small>
+                  <span className="image-studio-history-number">{batchReference(row.id)}</span>
+                  <time dateTime={row.createdAt}>{date}</time>
+                  <span>{t(status)}</span>
+                </small>
+              </span>
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon-sm"
+              className="image-studio-history-delete absolute end-1 top-1"
+              aria-label={t("imageStudio.deleteBatchLabel", { "0": batchReference(row.id) })}
+              aria-haspopup="dialog"
+              onClick={event => {
+                deleteTrigger.current = event.currentTarget;
+                removeBatch.reset();
+                setDeletion({ id: row.id, deleteFiles: false });
+              }}
+            >
+              <Trash aria-hidden="true" />
+            </Button>
+          </div>
         );
       })}
       {history.isSuccess && displayedHistory.length === 0 ? (
@@ -431,10 +512,13 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
           <h1>{t("imageStudio.title")}</h1>
         </div>
         {narrow ? (
-          <MobileHistory refresh={reloadButton}>{historyList}</MobileHistory>
+          <MobileHistory refresh={reloadButton} toggleRef={historyToggle} closeRef={drawerClose}>
+            {historyList}
+          </MobileHistory>
         ) : (
           <Button
             type="button"
+            ref={historyToggle}
             variant="ghost"
             size="sm"
             className="image-studio-history-toggle"
@@ -812,6 +896,79 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
           onClose={() => setPreview(null)}
         />
       ) : null}
+      <Dialog
+        open={deletion !== null}
+        onOpenChange={open => {
+          if (!open && !removeBatch.isPending) setDeletion(null);
+        }}
+      >
+        <DialogContent
+          className="image-studio-delete-dialog app-page max-h-[calc(100dvh-2rem)] overflow-y-auto"
+          showCloseButton={false}
+          onOpenAutoFocus={event => {
+            event.preventDefault();
+            cancelDeletion.current?.focus();
+          }}
+          onCloseAutoFocus={event => {
+            event.preventDefault();
+            const trigger = deleteTrigger.current;
+            deleteTrigger.current = null;
+            const list = historyListRef.current;
+            const next =
+              (trigger?.isConnected ? trigger : null) ??
+              list?.querySelector<HTMLButtonElement>('[data-batch-id][aria-pressed="true"]') ??
+              list?.querySelector<HTMLButtonElement>("[data-batch-id]") ??
+              drawerClose.current ??
+              historyToggle.current;
+            next?.focus();
+          }}
+          onEscapeKeyDown={event => {
+            if (removeBatch.isPending) event.preventDefault();
+          }}
+          onPointerDownOutside={event => event.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>
+              {deletion ? t("imageStudio.deleteBatchTitle", { "0": batchReference(deletion.id) }) : null}
+            </DialogTitle>
+            <DialogDescription>{t("imageStudio.deleteBatchDescription")}</DialogDescription>
+          </DialogHeader>
+          <Field orientation="horizontal" data-disabled={removeBatch.isPending}>
+            <Checkbox
+              id={deleteFilesId}
+              checked={deletion?.deleteFiles ?? false}
+              disabled={removeBatch.isPending}
+              onCheckedChange={checked => {
+                if (deletion) setDeletion({ ...deletion, deleteFiles: checked === true });
+              }}
+            />
+            <FieldLabel htmlFor={deleteFilesId}>{t("imageStudio.deleteFilesOption")}</FieldLabel>
+          </Field>
+          {removeBatch.error ? (
+            <Notice tone="danger" title={t("imageStudio.deleteBatchFailed")}>
+              {removeBatch.error.message}
+            </Notice>
+          ) : null}
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button ref={cancelDeletion} type="button" variant="outline" disabled={removeBatch.isPending}>
+                {t("common.cancel")}
+              </Button>
+            </DialogClose>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={removeBatch.isPending}
+              aria-busy={removeBatch.isPending}
+              onClick={() => {
+                if (deletion && !removeBatch.isPending) removeBatch.mutate(deletion);
+              }}
+            >
+              {t("imageStudio.deleteBatchConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -858,13 +1015,24 @@ function ParameterSelect({
   );
 }
 
-function MobileHistory({ children, refresh }: { children: (onChoose: () => void) => ReactNode; refresh: ReactNode }) {
+function MobileHistory({
+  children,
+  refresh,
+  toggleRef,
+  closeRef,
+}: {
+  children: (onChoose: () => void) => ReactNode;
+  refresh: ReactNode;
+  toggleRef: Ref<HTMLButtonElement>;
+  closeRef: Ref<HTMLButtonElement>;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button
           type="button"
+          ref={toggleRef}
           variant="ghost"
           size="sm"
           className="image-studio-history-toggle"
@@ -879,7 +1047,13 @@ function MobileHistory({ children, refresh }: { children: (onChoose: () => void)
           <DialogTitle>{t("imageStudio.history")}</DialogTitle>
           {refresh}
           <DialogClose asChild>
-            <Button type="button" variant="ghost" size="icon-sm" aria-label={t("imageStudio.collapseHistory")}>
+            <Button
+              ref={closeRef}
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t("imageStudio.collapseHistory")}
+            >
               <X aria-hidden="true" />
             </Button>
           </DialogClose>

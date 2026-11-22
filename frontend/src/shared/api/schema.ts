@@ -5290,7 +5290,8 @@ export interface paths {
         get: operations["getImageStudioBatch"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** 从本人工作台历史删除整批，可选永久清理该批的生成图片 */
+        delete: operations["deleteImageStudioBatch"];
         options?: never;
         head?: never;
         patch?: never;
@@ -20253,6 +20254,47 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    deleteImageStudioBatch: {
+        parameters: {
+            query?: {
+                /** @description 默认仅移除记录。显式传 true 时清理生成原图与缩略图，不清理输入参考图。 */
+                deleteFiles?: boolean;
+            };
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                batchId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已删除历史记录，永久文件清理已受理（或此前已受理） */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 历史记录已删除，保留文件 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
 }

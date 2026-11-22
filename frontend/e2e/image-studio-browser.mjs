@@ -393,6 +393,84 @@ try {
       `Dark Studio viewport passed: ${viewport.width}×${viewport.height} × four languages, aspect ratios, submission motion and reduced motion`,
     );
   }
+  for (const viewport of viewports.slice(0, 2)) {
+    await cdp("Emulation.setDeviceMetricsOverride", { ...viewport, deviceScaleFactor: 1, mobile: false });
+    await navigate("deletion", "en");
+    await imageReady(4);
+    await click(".image-studio-restore");
+    await click("textarea");
+    await cdp("Input.insertText", { text: "Keep this working draft." });
+    const readDraft = () =>
+      page(() => ({
+        prompt: document.querySelector("textarea").value,
+        parameters: [...document.querySelectorAll(".image-studio-parameter [role=combobox]")].map(e => e.textContent),
+        references: [...document.querySelectorAll(".image-studio-reference img")].map(e => e.getAttribute("src")),
+      }));
+    const draft = await readDraft();
+    assert.match(draft.prompt, /Keep this working draft/);
+    assert.ok(draft.parameters.includes("4 images"));
+    assert.equal(draft.references.length, 1);
+    await openHistory();
+    const savedId = "synthetic-saved-batch";
+    const previousId = "synthetic-previous-batch";
+    const row = id => `.image-studio-history-item[data-batch-id="${id}"]`;
+    const trash = id => `${row(id)} + .image-studio-history-delete`;
+    const savedTrash = trash(savedId);
+    const dialog = ".image-studio-delete-dialog";
+    const cancel = `${dialog} button[data-variant="outline"]`;
+    const confirm = `${dialog} button[data-variant="destructive"]`;
+    const checkbox = `${dialog} [role="checkbox"]`;
+    for (let step = 0; step < 24 && !(await page(s => document.activeElement.matches(s), savedTrash)); step++)
+      await key("Tab", "Tab", 9);
+    assert.equal(await page(s => document.activeElement.matches(s), savedTrash), true, "Delete is reachable by Tab");
+    await key("Enter", "Enter", 13, "\r");
+    await waitFor(selector => document.activeElement.matches(selector), cancel);
+    assert.equal(await page(s => document.querySelector(s).getAttribute("aria-checked"), checkbox), "false");
+    await click(checkbox);
+    await key("Escape", "Escape", 27);
+    await waitFor(selector => document.activeElement.matches(selector), savedTrash);
+    assert.deepEqual((await page(() => window.__imageStudio.evidence())).deletions, []);
+    assert.deepEqual(await readDraft(), draft);
+
+    await key("Enter", "Enter", 13, "\r");
+    await waitFor(s => document.querySelector(s)?.getAttribute("aria-checked") === "false", checkbox);
+    await click(confirm);
+    await waitFor(s => !document.querySelector(s), row(savedId));
+    await waitFor(s => document.activeElement.matches(s), row(previousId));
+    await waitFor(() =>
+      document.querySelector(".image-studio-history-list [role=status]")?.textContent.includes("files were kept"),
+    );
+    assert.deepEqual(await readDraft(), draft);
+
+    await click(trash(previousId));
+    await click(checkbox);
+    await click(confirm);
+    await waitFor(() =>
+      document.querySelector('[role="alert"]')?.textContent.includes("An image is still referenced by another batch."),
+    );
+    assert.equal(await page(s => document.querySelector(s).getAttribute("aria-checked"), checkbox), "true");
+    assert.equal(await page(s => document.querySelector(s).getAttribute("aria-pressed"), row(previousId)), "true");
+    assert.deepEqual(await readDraft(), draft);
+    await click(confirm);
+    await waitFor(() =>
+      document.querySelector(".image-studio-history-list [role=status]")?.textContent.includes("has been queued"),
+    );
+    await waitFor(s => !document.querySelector(s), dialog);
+    await waitFor(() => !document.querySelector('button[aria-label="Refresh studio"]').disabled);
+    await click('button[aria-label="Refresh studio"]');
+    await waitFor(() => !document.querySelector('button[aria-label="Refresh studio"]').disabled);
+    assert.equal(await page(s => document.querySelectorAll(s).length, `${row(savedId)},${row(previousId)}`), 0);
+    assert.deepEqual(await readDraft(), draft);
+    const evidence = await page(() => window.__imageStudio.evidence());
+    assert.deepEqual(evidence.deletions, [
+      { id: savedId, deleteFiles: null, csrf: "synthetic" },
+      { id: previousId, deleteFiles: "true", csrf: "synthetic" },
+      { id: previousId, deleteFiles: "true", csrf: "synthetic" },
+    ]);
+    assert.deepEqual(evidence.writes, []);
+    assert.deepEqual(evidence.unexpected, []);
+  }
+  console.log("Studio desktop and mobile: accessible confirmation, record-only deletion, conflict and queued purge");
   for (const [viewport, shape] of [
     [viewports[0], "landscape"],
     [viewports[1], "portrait"],

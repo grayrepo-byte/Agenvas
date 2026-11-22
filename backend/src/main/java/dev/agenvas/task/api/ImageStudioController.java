@@ -14,6 +14,7 @@ import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -70,6 +71,14 @@ public class ImageStudioController {
     public ResponseEntity<ImageStudioService.BatchView> get(@AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID batchId) {
         return privateResponse(studio.get(principal.userId(), batchId));
+    }
+
+    @DeleteMapping("/batches/{batchId}")
+    public ResponseEntity<Void> delete(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID batchId,
+            @RequestParam(defaultValue = "false") boolean deleteFiles) {
+        studio.delete(principal.userId(), batchId, deleteFiles);
+        return (deleteFiles ? ResponseEntity.accepted() : ResponseEntity.noContent())
+                .cacheControl(CacheControl.noStore()).build();
     }
 
     public record CreateBatch(@NotNull UUID capabilityId, @NotNull @Min(1) Integer expectedCapabilityVersion,

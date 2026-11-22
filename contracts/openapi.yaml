@@ -7225,6 +7225,25 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+    delete:
+      operationId: deleteImageStudioBatch
+      summary: 从本人工作台历史删除整批，可选永久清理该批的生成图片
+      tags: [ImageStudio]
+      parameters:
+        - name: deleteFiles
+          in: query
+          description: 默认仅移除记录。显式传 true 时清理生成原图与缩略图，不清理输入参考图。
+          schema: {type: boolean, default: false}
+      responses:
+        "202":
+          description: 已删除历史记录，永久文件清理已受理（或此前已受理）
+        "204":
+          description: 历史记录已删除，保留文件
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
 components:
   securitySchemes:
     McpBearer:

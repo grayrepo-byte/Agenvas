@@ -227,6 +227,40 @@ public class AssetRecord extends UpdatableRecordImpl<AssetRecord> {
         return (Integer) get(13);
     }
 
+    /**
+     * Setter for <code>public.asset.studio_purge_after</code>. Studio result
+     * file removal intent and earliest cleanup attempt; non-null denies serving
+     * the file
+     */
+    public void setStudioPurgeAfter(OffsetDateTime value) {
+        set(14, value);
+    }
+
+    /**
+     * Getter for <code>public.asset.studio_purge_after</code>. Studio result
+     * file removal intent and earliest cleanup attempt; non-null denies serving
+     * the file
+     */
+    public OffsetDateTime getStudioPurgeAfter() {
+        return (OffsetDateTime) get(14);
+    }
+
+    /**
+     * Setter for <code>public.asset.studio_purged_at</code>. Confirmed removal
+     * of the original and thumbnail; asset metadata remains for audit
+     */
+    public void setStudioPurgedAt(OffsetDateTime value) {
+        set(15, value);
+    }
+
+    /**
+     * Getter for <code>public.asset.studio_purged_at</code>. Confirmed removal
+     * of the original and thumbnail; asset metadata remains for audit
+     */
+    public OffsetDateTime getStudioPurgedAt() {
+        return (OffsetDateTime) get(15);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -250,7 +284,7 @@ public class AssetRecord extends UpdatableRecordImpl<AssetRecord> {
     /**
      * Create a detached, initialised AssetRecord
      */
-    public AssetRecord(UUID id, UUID projectId, String mediaKind, String objectKey, String contentType, Long byteSize, String sha256, Integer width, Integer height, OffsetDateTime createdAt, String thumbnailKey, Long thumbnailByteSize, String thumbnailSha256, Integer durationMs) {
+    public AssetRecord(UUID id, UUID projectId, String mediaKind, String objectKey, String contentType, Long byteSize, String sha256, Integer width, Integer height, OffsetDateTime createdAt, String thumbnailKey, Long thumbnailByteSize, String thumbnailSha256, Integer durationMs, OffsetDateTime studioPurgeAfter, OffsetDateTime studioPurgedAt) {
         super(Asset.ASSET);
 
         setId(id);
@@ -267,6 +301,8 @@ public class AssetRecord extends UpdatableRecordImpl<AssetRecord> {
         setThumbnailByteSize(thumbnailByteSize);
         setThumbnailSha256(thumbnailSha256);
         setDurationMs(durationMs);
+        setStudioPurgeAfter(studioPurgeAfter);
+        setStudioPurgedAt(studioPurgedAt);
         resetChangedOnNotNull();
     }
 }

@@ -23,6 +23,8 @@ import java.util.function.Supplier;
 import java.util.function.BooleanSupplier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 /** 校验项目权限并管理私有媒体归档；文件先安装，数据库只记录已校验的 READY 元数据。 */
@@ -357,8 +359,10 @@ public class AssetService {
     }
 
     private Optional<Asset> recoverTaskImageLocked(UUID ownerId, UUID projectId, UUID assetId, boolean verifyObjects) {
-        var recovered = storage.recoverImage(projectId, assetId);
         var existing = assets.find(projectId, assetId);
+        if (existing.isPresent() && assets.findAvailable(projectId, assetId).isEmpty())
+            throw assetNotFound();
+        var recovered = storage.recoverImage(projectId, assetId);
         if (recovered.isEmpty()) {
             if (existing.isPresent())
                 throw new IllegalStateException("Task image metadata exists without original file");
@@ -530,9 +534,26 @@ public class AssetService {
                         .put("byteSize", asset.byteSize()));
     }
 
+    /** The Studio batch transaction has already verified that this result has no live references. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void queueStudioImagePurge(UUID ownerId, UUID projectId, UUID assetId) {
+        projects.requireImageStudioScope(ownerId, projectId);
+        if (!assets.queueStudioImagePurge(projectId, assetId, now()))
+            throw assetNotFound();
+    }
+
     /** 先核验项目所有权，再检查 READY 文件路径和字节大小后返回私有文件。 */
     public AssetFile get(UUID ownerId, UUID projectId, UUID assetId) {
         Asset asset = metadata(ownerId, projectId, assetId);
+        if (asset.mediaKind() == Asset.MediaKind.IMAGE) {
+            // Do not let a processing download recreate a shared cache entry after purge.
+            return storage.withTaskImageLock(projectId, assetId,
+                    () -> readyFile(assets.findAvailable(projectId, assetId).orElseThrow(this::assetNotFound)));
+        }
+        return readyFile(asset);
+    }
+
+    private AssetFile readyFile(Asset asset) {
         Path path = checkedReadyFile(asset.objectKey(), asset.byteSize());
         return new AssetFile(asset, path);
     }
@@ -540,9 +561,13 @@ public class AssetService {
     /** READY metadata is the database truth; creating an input reference never performs network I/O. */
     public Asset metadata(UUID ownerId, UUID projectId, UUID assetId) {
         projects.get(ownerId, projectId);
-        return assets.find(projectId, assetId).orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
-                "ASSET_NOT_FOUND", ApiMessage.of("api.asset-service.material-does-not-exist"),
-                ApiMessage.of("api.asset-service.the-assets-in-this-project-were-not-found"), false));
+        return assets.findAvailable(projectId, assetId).orElseThrow(this::assetNotFound);
+    }
+
+    private ApiProblemException assetNotFound() {
+        return new ApiProblemException(HttpStatus.NOT_FOUND, "ASSET_NOT_FOUND",
+                ApiMessage.of("api.asset-service.material-does-not-exist"),
+                ApiMessage.of("api.asset-service.the-assets-in-this-project-were-not-found"), false);
     }
 
     /** Authorize before accessing storage; metadata/HEAD never materialize a remote video. */
@@ -589,9 +614,7 @@ public class AssetService {
     /** 已受理任务追加历史时仍可验证被逻辑删除项目的固定结果，不开放用户素材读取。 */
     public Asset requireReadyTaskMedia(UUID ownerId, UUID projectId, UUID assetId, Asset.MediaKind expectedKind) {
         projects.getRetainedProject(ownerId, projectId);
-        Asset asset = assets.find(projectId, assetId).orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
-                "ASSET_NOT_FOUND", ApiMessage.of("api.asset-service.material-does-not-exist"),
-                ApiMessage.of("api.asset-service.the-assets-in-this-project-were-not-found"), false));
+        Asset asset = assets.findAvailable(projectId, assetId).orElseThrow(this::assetNotFound);
         if (asset.mediaKind() != expectedKind)
             throw new ApiProblemException(HttpStatus.BAD_REQUEST,
                     "ARTIFACT_ASSET_KIND_INVALID", ApiMessage.of("api.asset-service.material-type-mismatch"),

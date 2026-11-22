@@ -30,6 +30,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -150,6 +151,8 @@ public class ImageStudioService {
             if (prior != null) {
                 if (!prior.requestHash().equals(hash))
                     throw conflict("IDEMPOTENCY_CONFLICT");
+                if (prior.deleteFiles() != null)
+                    throw conflict("STUDIO_BATCH_DELETED", ApiMessage.of("api.image-studio.deleted-command"));
                 return ProjectEventService.Change.unchanged(view(owner, prior));
             }
             MediaCapabilityBinding binding = capabilities.resolve(capabilityId, Task.Kind.IMAGE_GENERATION, 0);
@@ -167,7 +170,7 @@ public class ImageStudioService {
             // response and every idempotent replay must expose the same timestamp.
             Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
             var batch = new ImageStudioRepository.Batch(UUID.randomUUID(), owner, project, key, hash,
-                    frozenRequest, now);
+                    frozenRequest, now, null);
             studio.create(batch);
             // This white list contains single-request standard adapters only. Provider-native
             // multi-output results remain outputs of the original task, never a second fan-out.
@@ -192,12 +195,50 @@ public class ImageStudioService {
         }).value();
     }
 
-    @Transactional(readOnly = true)
+    // Keep the tombstone check and asset lookups in the same database snapshot.
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public BatchView get(UUID owner, UUID batchId) {
-        return view(owner, studio.find(owner, batchId).orElseThrow(this::notFound));
+        return view(owner, studio.find(owner, batchId).filter(batch -> batch.deleteFiles() == null)
+                .orElseThrow(this::notFound));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
+    public void delete(UUID owner, UUID batchId, boolean deleteFiles) {
+        UUID project = studio.find(owner, batchId).orElseThrow(this::notFound).projectId();
+        events.recordChange(owner, project, () -> {
+            var batch = studio.find(owner, batchId).orElseThrow(this::notFound);
+            if (batch.deleteFiles() != null) {
+                if (batch.deleteFiles() != deleteFiles)
+                    throw conflict("STUDIO_DELETE_OPTION_MISMATCH",
+                            ApiMessage.of("api.image-studio.delete-option-mismatch"));
+                return ProjectEventService.Change.unchanged(null);
+            }
+            if (deleteFiles) {
+                List<Task> members = studio.taskIds(batchId).stream()
+                        .map(id -> tasks.find(owner, project, id).orElseThrow(this::notFound)).toList();
+                // Studio image tasks cannot publish late from CANCELED (that exception is for local editors).
+                if (members.stream().anyMatch(task -> switch (task.status()) {
+                    case SUCCEEDED, FAILED, CANCELED -> false;
+                    default -> true;
+                })) {
+                    throw conflict("STUDIO_BATCH_UNSETTLED", ApiMessage.of("api.image-studio.delete-unsettled"));
+                }
+                Set<UUID> assetIds = new HashSet<>();
+                for (Task task : members) {
+                    for (ArtifactVersion version : resultVersions(owner, project, task))
+                        assetIds.add(assetId(version));
+                }
+                if (studio.otherBatchReferencesAssets(owner, project, batchId, assetIds))
+                    throw conflict("STUDIO_BATCH_ASSETS_IN_USE", ApiMessage.of("api.image-studio.delete-in-use"));
+                for (UUID assetId : assetIds)
+                    assets.queueStudioImagePurge(owner, project, assetId);
+            }
+            studio.markDeleted(owner, batchId, clock.instant(), deleteFiles);
+            return ProjectEventService.Change.unchanged(null);
+        });
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public BatchPage list(UUID owner, String cursor, Integer requestedLimit) {
         int limit = requestedLimit == null ? 20 : requestedLimit;
         if (limit < 1 || limit > MAX_HISTORY_PAGE)
@@ -224,34 +265,12 @@ public class ImageStudioService {
         JsonNode request = batch.request();
         List<TaskView> taskViews = studio.taskIds(batch.id()).stream().map(id -> {
             Task task = tasks.find(owner, batch.projectId(), id).orElseThrow(this::notFound);
-            var outputs = new ArrayList<Result>();
-            var seen = new HashSet<UUID>();
-            var archives = new ArrayList<JsonNode>();
-            if (task.output() != null)
-                archives.add(task.output());
-            archives.addAll(tasks.lateResults(owner, batch.projectId(), task.id()));
-            for (JsonNode archive : archives) {
-                var identities = ArchivedTaskResults.read(archive);
-                var results = new ArrayList<ArchivedTaskResults.Identity>();
-                if (identities.primary() != null)
-                    results.add(identities.primary());
-                results.addAll(identities.additional());
-                for (var identity : results) {
-                    if (identity.artifactId() == null || identity.artifactVersionId() == null)
-                        continue;
-                    UUID versionId = UUID.fromString(identity.artifactVersionId());
-                    if (!seen.add(versionId))
-                        continue;
-                    var version = artifacts.requireImageVersionForTask(owner, batch.projectId(), versionId);
-                    if (!version.artifactId().toString().equals(identity.artifactId()))
-                        throw new IllegalStateException("Studio archive identity mismatch");
-                    Asset asset = assets.metadata(owner, batch.projectId(),
-                            UUID.fromString(version.content().path("assetId").asText()));
-                    outputs.add(new Result(version.artifactId(), versionId, asset.id(), asset.width(), asset.height(),
-                            asset.contentType()));
-                }
-            }
-            return new TaskView(task.id(), task.status(), task.version(), task.errorCode(), List.copyOf(outputs));
+            List<Result> outputs = resultVersions(owner, batch.projectId(), task).stream().map(version -> {
+                Asset asset = assets.metadata(owner, batch.projectId(), assetId(version));
+                return new Result(version.artifactId(), version.id(), asset.id(), asset.width(), asset.height(),
+                        asset.contentType());
+            }).toList();
+            return new TaskView(task.id(), task.status(), task.version(), task.errorCode(), outputs);
         }).toList();
         List<UUID> referenceVersionIds = request.path("referenceVersionIds").valueStream()
                 .map(value -> UUID.fromString(value.asText())).toList();
@@ -260,6 +279,38 @@ public class ImageStudioService {
                 request.path("parameters"), referenceVersionIds, referenceVersionIds.stream()
                         .map(version -> reference(owner, batch.projectId(), version)).toList(),
                 batch.createdAt(), taskViews);
+    }
+
+    private List<ArtifactVersion> resultVersions(UUID owner, UUID project, Task task) {
+        var archives = new ArrayList<JsonNode>();
+        if (task.output() != null)
+            archives.add(task.output());
+        archives.addAll(tasks.lateResults(owner, project, task.id()));
+        var seen = new HashSet<UUID>();
+        var versions = new ArrayList<ArtifactVersion>();
+        for (JsonNode archive : archives) {
+            var identities = ArchivedTaskResults.read(archive);
+            var results = new ArrayList<ArchivedTaskResults.Identity>();
+            if (identities.primary() != null)
+                results.add(identities.primary());
+            results.addAll(identities.additional());
+            for (var identity : results) {
+                if (identity.artifactId() == null || identity.artifactVersionId() == null)
+                    continue;
+                UUID versionId = UUID.fromString(identity.artifactVersionId());
+                if (!seen.add(versionId))
+                    continue;
+                var version = artifacts.requireImageVersionForTask(owner, project, versionId);
+                if (!version.artifactId().toString().equals(identity.artifactId()))
+                    throw new IllegalStateException("Studio archive identity mismatch");
+                versions.add(version);
+            }
+        }
+        return versions;
+    }
+
+    private static UUID assetId(ArtifactVersion version) {
+        return UUID.fromString(version.content().path("assetId").asText());
     }
 
     private ObjectNode frozenTaskInput(MediaCapabilityBinding binding, ImageStudioRepository.Batch batch,
@@ -318,7 +369,7 @@ public class ImageStudioService {
             if (artifacts.get(owner, project, version.artifactId()).artifact().archivedAt() != null)
                 throw invalid();
             Asset asset = assets.requireReadyMedia(owner, project,
-                    UUID.fromString(version.content().path("assetId").asText()), Asset.MediaKind.IMAGE);
+                    assetId(version), Asset.MediaKind.IMAGE);
             ImageGenerationPreparation.requireStaticImage(asset);
             result.add(new Reference(version.artifactId(), version.id(), asset.id(), project, asset.width(),
                     asset.height()));
@@ -329,7 +380,7 @@ public class ImageStudioService {
     /** History always resolves the accepted version; later resource-default choices cannot replace a reference. */
     private Reference reference(UUID owner, UUID project, UUID versionId) {
         ArtifactVersion version = artifacts.requireImageVersionForTask(owner, project, versionId);
-        Asset asset = assets.metadata(owner, project, UUID.fromString(version.content().path("assetId").asText()));
+        Asset asset = assets.metadata(owner, project, assetId(version));
         return new Reference(version.artifactId(), version.id(), asset.id(), project, asset.width(), asset.height());
     }
 
@@ -361,8 +412,11 @@ public class ImageStudioService {
                 ApiMessage.of("api.image-studio.title"), ApiMessage.of("api.image-studio.invalid-request"), false);
     }
     private ApiProblemException conflict(String code) {
+        return conflict(code, ApiMessage.of("api.image-studio.conflict"));
+    }
+    private ApiProblemException conflict(String code, ApiMessage detail) {
         return new ApiProblemException(HttpStatus.CONFLICT, code, ApiMessage.of("api.image-studio.title"),
-                ApiMessage.of("api.image-studio.conflict"), false);
+                detail, false);
     }
     private ApiProblemException notFound() {
         return new ApiProblemException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND",

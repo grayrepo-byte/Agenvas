@@ -19,6 +19,9 @@ public interface ProjectRepository {
     /** Public canvas management must not expose an internal media storage scope. */
     boolean isCanvasScope(UUID ownerId, UUID projectId);
 
+    /** Checks the owner's private Studio storage scope without creating it. */
+    boolean isImageStudioScope(UUID ownerId, UUID projectId);
+
     /** 在指定所有者范围内读取项目。 */
     Optional<Project> findById(UUID ownerId, UUID projectId);
 

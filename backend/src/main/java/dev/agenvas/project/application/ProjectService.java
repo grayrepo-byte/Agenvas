@@ -74,6 +74,13 @@ public class ProjectService {
         return project;
     }
 
+    /** Permanent Studio file cleanup must never operate on an ordinary canvas scope. */
+    @Transactional(readOnly = true)
+    public void requireImageStudioScope(UUID ownerId, UUID projectId) {
+        if (!projects.isImageStudioScope(ownerId, projectId))
+            throw notFound();
+    }
+
     /** 只读取当前用户拥有的项目；越权 ID 与不存在返回相同的 404。 */
     @Transactional(readOnly = true)
     public Project get(UUID ownerId, UUID projectId) {

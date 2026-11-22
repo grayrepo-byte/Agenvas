@@ -70,9 +70,18 @@ public class JooqProjectRepository implements ProjectRepository {
 
     @Override
     public boolean isCanvasScope(UUID ownerId, UUID projectId) {
+        return isScope(ownerId, projectId, ProjectPurpose.CANVAS);
+    }
+
+    @Override
+    public boolean isImageStudioScope(UUID ownerId, UUID projectId) {
+        return isScope(ownerId, projectId, ProjectPurpose.IMAGE_STUDIO);
+    }
+
+    private boolean isScope(UUID ownerId, UUID projectId, ProjectPurpose purpose) {
         return dsl.fetchExists(dsl.selectOne().from(PROJECT)
                 .where(PROJECT.ID.eq(projectId)).and(PROJECT.OWNER_ID.eq(ownerId))
-                .and(PROJECT.PURPOSE.eq(ProjectPurpose.CANVAS.name())));
+                .and(PROJECT.PURPOSE.eq(purpose.name())));
     }
 
     /** 仅按项目 ID 与所有者 ID 读取项目，避免跨用户查询。 */

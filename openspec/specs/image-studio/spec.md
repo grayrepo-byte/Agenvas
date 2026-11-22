@@ -110,3 +110,24 @@
 
 - **WHEN** 用户手动修改回填后的提示词、显式回填全量参数或提交生成
 - **THEN** 工作台清除旧的撤销入口，不用旧草稿覆盖新的编辑
+
+### Requirement: Delete a generation batch from Studio history
+
+工作台 MUST 提供按批次删除历史的操作，要求再次确认，且默认不删除图片文件。删除历史 MUST 保留编辑草稿、任务、用量和生成命令的幂等身份。
+
+#### Scenario: Delete history without removing image files
+
+- **WHEN** 用户保留默认选项并确认
+- **THEN** 批次不再出现在历史和批次详情中，已生成的原图和缩略图继续保留
+- **AND** 不取消已受理任务，不自动回填其他批次的提示词，也不提交生成
+
+#### Scenario: Also permanently remove generated files
+
+- **WHEN** 用户勾选永久删除文件并确认，且批次已确定结束、生成文件未被其他批次用作参考
+- **THEN** 工作台移除历史记录，服务端撤销原图和缩略图的读取并后台永久清理文件，不放入回收站
+- **AND** 只清理该批次的生成结果，不删除它使用的参考文件
+
+#### Scenario: Protect active and referenced results
+
+- **WHEN** 批次仍有未确定结束的任务，或者其结果文件已被其他批次用作参考，且用户选择同时删除文件
+- **THEN** 服务端拒绝请求，保留记录和文件，工作台显示失败原因
