@@ -6,6 +6,13 @@
       "sourceType": "github",
       "skillPath": "skills/shadcn/SKILL.md",
       "computedHash": "c60d0a14a6c6f798b07e51093d9627917ca3425b92f5d419eaa57b9b15be89de"
+    },
+    "unslop": {
+      "source": "heydamir/unslop",
+      "commit": "620163eedb3529d9cd23a3994ed8d287d06f760d",
+      "sourceType": "github",
+      "skillPath": "skills/unslop/SKILL.md",
+      "computedHash": "34b16270083f9892424a0b41dec4d5f25a73709c9cffa7702e57c723000e6df5"
     }
   }
 }
