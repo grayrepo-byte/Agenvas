@@ -50,6 +50,7 @@ import dev.agenvas.db.tables.TaskArtifactTarget;
 import dev.agenvas.db.tables.ThirdPartyPrompt;
 import dev.agenvas.db.tables.ToolExecution;
 import dev.agenvas.db.tables.UsageLedger;
+import dev.agenvas.db.tables.VideoStudioGeneration;
 
 import org.jooq.Index;
 import org.jooq.OrderField;
@@ -113,6 +114,7 @@ public class Indexes {
     public static final Index IX_TASK_SUBMITTING_LEASE = Internal.createIndex(DSL.name("ix_task_submitting_lease"), Task.TASK, new OrderField[] { Task.TASK.LEASE_UNTIL, Task.TASK.ID }, false);
     public static final Index IX_TOOL_EXECUTION_RUN = Internal.createIndex(DSL.name("ix_tool_execution_run"), ToolExecution.TOOL_EXECUTION, new OrderField[] { ToolExecution.TOOL_EXECUTION.PROJECT_ID, ToolExecution.TOOL_EXECUTION.RUN_ID, ToolExecution.TOOL_EXECUTION.STATUS }, false);
     public static final Index IX_USAGE_LEDGER_PROJECT_CREATED = Internal.createIndex(DSL.name("ix_usage_ledger_project_created"), UsageLedger.USAGE_LEDGER, new OrderField[] { UsageLedger.USAGE_LEDGER.PROJECT_ID, UsageLedger.USAGE_LEDGER.CREATED_AT.desc(), UsageLedger.USAGE_LEDGER.ID.desc() }, false);
+    public static final Index IX_VIDEO_STUDIO_GENERATION_OWNER_HISTORY = Internal.createIndex(DSL.name("ix_video_studio_generation_owner_history"), VideoStudioGeneration.VIDEO_STUDIO_GENERATION, new OrderField[] { VideoStudioGeneration.VIDEO_STUDIO_GENERATION.OWNER_ID, VideoStudioGeneration.VIDEO_STUDIO_GENERATION.CREATED_AT.desc(), VideoStudioGeneration.VIDEO_STUDIO_GENERATION.ID.desc() }, false);
     public static final Index LIBRARY_CLEANUP_DUE_IDX = Internal.createIndex(DSL.name("library_cleanup_due_idx"), LibraryCleanup.LIBRARY_CLEANUP, new OrderField[] { LibraryCleanup.LIBRARY_CLEANUP.NEXT_ATTEMPT_AT, LibraryCleanup.LIBRARY_CLEANUP.CREATED_AT, LibraryCleanup.LIBRARY_CLEANUP.ID }, false);
     public static final Index MEDIA_RELAY_OBJECT_EXPIRY_IDX = Internal.createIndex(DSL.name("media_relay_object_expiry_idx"), MediaRelayObject.MEDIA_RELAY_OBJECT, new OrderField[] { MediaRelayObject.MEDIA_RELAY_OBJECT.EXPIRES_AT }, false);
     public static final Index REFERENCE_CATALOG_CACHE_JOB_CLAIM = Internal.createIndex(DSL.name("reference_catalog_cache_job_claim"), ReferenceCatalogCacheJob.REFERENCE_CATALOG_CACHE_JOB, new OrderField[] { ReferenceCatalogCacheJob.REFERENCE_CATALOG_CACHE_JOB.STATE, ReferenceCatalogCacheJob.REFERENCE_CATALOG_CACHE_JOB.LEASE_UNTIL, ReferenceCatalogCacheJob.REFERENCE_CATALOG_CACHE_JOB.CREATED_AT }, false);
@@ -130,6 +132,7 @@ public class Indexes {
     public static final Index UQ_CANVAS_ITEM_MEDIA_INPUT_MANUAL_SOURCE = Internal.createIndex(DSL.name("uq_canvas_item_media_input_manual_source"), CanvasItemMediaInputSource.CANVAS_ITEM_MEDIA_INPUT_SOURCE, new OrderField[] { CanvasItemMediaInputSource.CANVAS_ITEM_MEDIA_INPUT_SOURCE.PROJECT_ID, CanvasItemMediaInputSource.CANVAS_ITEM_MEDIA_INPUT_SOURCE.CANVAS_ITEM_ID, CanvasItemMediaInputSource.CANVAS_ITEM_MEDIA_INPUT_SOURCE.ARTIFACT_VERSION_ID }, true);
     public static final Index UQ_CANVAS_ITEM_MEDIA_INPUT_START_FRAME = Internal.createIndex(DSL.name("uq_canvas_item_media_input_start_frame"), CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT, new OrderField[] { CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT.PROJECT_ID, CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT.CANVAS_ITEM_ID, CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT.INPUT_ROLE }, true);
     public static final Index UQ_PROJECT_IMAGE_STUDIO_OWNER = Internal.createIndex(DSL.name("uq_project_image_studio_owner"), Project.PROJECT, new OrderField[] { Project.PROJECT.OWNER_ID }, true);
+    public static final Index UQ_PROJECT_VIDEO_STUDIO_OWNER = Internal.createIndex(DSL.name("uq_project_video_studio_owner"), Project.PROJECT, new OrderField[] { Project.PROJECT.OWNER_ID }, true);
     public static final Index UQ_TASK_DIRECT_KEY = Internal.createIndex(DSL.name("uq_task_direct_key"), Task.TASK, new OrderField[] { Task.TASK.PROJECT_ID, Task.TASK.STEP_KEY }, true);
     public static final Index UQ_TASK_RUN_STEP_ATTEMPT = Internal.createIndex(DSL.name("uq_task_run_step_attempt"), Task.TASK, new OrderField[] { Task.TASK.RUN_ID, Task.TASK.STEP_KEY, Task.TASK.ATTEMPT_NO }, true);
     public static final Index UX_LLM_PROVIDER_CONFIG_ACTIVE = Internal.createIndex(DSL.name("ux_llm_provider_config_active"), LlmProviderConfig.LLM_PROVIDER_CONFIG, new OrderField[] { LlmProviderConfig.LLM_PROVIDER_CONFIG.ACTIVE }, true);

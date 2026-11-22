@@ -1,0 +1,316 @@
+.app-shell.app-shell--video-studio {
+  display: block;
+  height: 100dvh;
+  min-height: 0;
+  background: var(--ui-photo-backdrop);
+}
+
+.app-shell.app-shell--video-studio .app-page-main {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.video-studio {
+  --video-studio-gutter: clamp(16px, 3.25vw, 60px);
+  --video-studio-rail: clamp(168px, 15vw, 220px);
+  --video-studio-gap: clamp(16px, 2vw, 32px);
+  flex: 1 1 0;
+  display: grid;
+  grid-template-rows: auto minmax(min-content, 1fr) auto;
+  gap: var(--ui-space-4);
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
+  background: var(--ui-photo-backdrop);
+  color: var(--ui-text);
+}
+
+.video-studio-header,
+.video-studio-brand,
+.video-studio-header-actions,
+.video-studio-frame-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-2);
+}
+
+.video-studio-header {
+  justify-content: space-between;
+  min-height: 64px;
+  padding: var(--ui-space-2) var(--video-studio-gutter);
+}
+
+.video-studio-brand {
+  min-width: 0;
+  gap: var(--ui-space-3);
+}
+
+.video-studio-brand a {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  min-height: 40px;
+  border-radius: var(--ui-radius-sm);
+}
+
+.video-studio-brand .brand-logo {
+  width: clamp(76px, 11vw, 118px);
+}
+
+.video-studio-brand h1 {
+  margin: 0;
+  padding-inline-start: var(--ui-space-3);
+  border-inline-start: 1px solid var(--ui-photo-rule);
+  color: var(--ui-text-secondary);
+  font-size: var(--ui-text-sm);
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+
+.video-studio-workspace {
+  display: grid;
+  grid-template-columns: var(--video-studio-rail) minmax(0, 1fr) var(--video-studio-rail);
+  gap: var(--video-studio-gap);
+  min-width: 0;
+  padding-inline: var(--video-studio-gutter);
+}
+
+.video-studio-stage {
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  align-self: center;
+  justify-self: center;
+  gap: var(--ui-space-3);
+  width: min(100%, 900px);
+  min-width: 0;
+}
+
+.video-studio-restore {
+  align-self: flex-end;
+  max-width: 100%;
+}
+
+.video-studio-restore button {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.video-studio-history {
+  grid-column: 3;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-3);
+  min-width: 0;
+  min-height: 0;
+  max-height: max(24rem, 66vh);
+  padding-inline-start: var(--ui-space-3);
+  border-inline-start: 1px solid var(--ui-photo-rule);
+}
+
+.video-studio-history[hidden] {
+  display: none;
+}
+
+.video-studio-history h2 {
+  margin: 0;
+  font-size: var(--ui-text-sm);
+}
+
+.video-studio-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-2);
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  color: var(--ui-text-secondary);
+  font-size: var(--ui-text-sm);
+}
+
+.video-studio-history-list p,
+.video-studio-history-list ul {
+  margin: 0;
+}
+
+.video-studio-history-list ul {
+  display: grid;
+  gap: var(--ui-space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.video-studio-history-list .video-studio-history-entry {
+  display: flex;
+  justify-content: flex-start;
+  gap: var(--ui-space-2);
+  width: 100%;
+  min-width: 0;
+  padding: var(--ui-space-1);
+  text-align: start;
+}
+
+.video-studio-history-entry[aria-pressed="true"] {
+  background: var(--ui-selected);
+}
+
+.video-studio-history-cover {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 48px;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-photo-composer);
+}
+
+.video-studio-history-cover img,
+.video-studio-frame-actions img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.video-studio-history-copy {
+  display: grid;
+  gap: var(--ui-space-1);
+  min-width: 0;
+  font-size: var(--ui-text-xs);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.video-studio-history-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ui-text);
+}
+
+.video-studio-composer {
+  display: grid;
+  gap: var(--ui-space-3);
+  justify-self: center;
+  width: min(calc(100% - var(--video-studio-gutter) * 2), 780px);
+  min-width: 0;
+  margin-block-end: max(var(--ui-space-4), env(safe-area-inset-bottom));
+  padding: clamp(12px, 2vw, 22px);
+  border: 1px solid var(--ui-photo-rule);
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-photo-composer);
+}
+
+.video-studio-fields,
+.video-studio-fields [data-slot="field"] {
+  gap: var(--ui-space-2);
+  min-width: 0;
+}
+
+.video-studio-options,
+.video-studio-frames {
+  display: grid;
+  gap: var(--ui-space-3);
+  align-items: start;
+}
+
+.video-studio-options {
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1.2fr) repeat(2, minmax(0, 1fr));
+}
+
+.video-studio-frames {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.video-studio-frame-actions,
+.video-studio-prompt-source {
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+
+.video-studio-frame-actions img {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--ui-radius-sm);
+}
+
+.video-studio-prompt-source {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-2);
+  color: var(--ui-text-secondary);
+  font-size: var(--ui-text-sm);
+}
+
+.video-studio-prompt-source p {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.video-studio-prompt-source p span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.video-studio-composer-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.video-studio-incompatible {
+  margin: 0;
+  padding-inline-start: var(--ui-space-5);
+  list-style: disc;
+}
+
+@media (max-width: 900px) {
+  .video-studio-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .video-studio-stage {
+    grid-column: 1;
+  }
+
+  .video-studio-history-drawer[data-slot="dialog-content"] {
+    inset: 0 0 0 auto;
+    grid-template-rows: auto minmax(0, 1fr);
+    width: min(100%, 360px);
+    max-width: none;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+
+  .video-studio-history-drawer [data-slot="dialog-header"] {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 560px) {
+  .video-studio {
+    scrollbar-gutter: auto;
+  }
+
+  .video-studio-header {
+    flex-wrap: wrap;
+  }
+
+  .video-studio-header-actions {
+    margin-inline-start: auto;
+  }
+
+  .video-studio-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

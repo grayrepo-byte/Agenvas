@@ -1,7 +1,8 @@
 import { t, useLocale } from "../shared/i18n";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, matchRoutes, useLocation } from "react-router";
+import { useVideoStudioDraftStore } from "../features/video-studio/videoStudioDraft";
 import { createQueryClient } from "./queryClient";
 import { PageErrorBoundary } from "./PageErrorBoundary";
 import { LoadingState } from "../shared/ui/LoadingState";
@@ -16,6 +17,9 @@ const LibraryPage = lazy(() =>
 );
 const ImageStudioPage = lazy(() =>
   import("../features/image-studio/ImageStudioPage").then(module => ({ default: module.ImageStudioPage })),
+);
+const VideoStudioPage = lazy(() =>
+  import("../features/video-studio/VideoStudioPage").then(module => ({ default: module.VideoStudioPage })),
 );
 const ProjectsPage = lazy(() =>
   import("../features/projects/ProjectsPage").then(module => ({ default: module.ProjectsPage })),
@@ -64,6 +68,9 @@ export function App() {
 function RouteQueryScope() {
   const location = useLocation();
   const authentication = matchRoutes([{ path: "/login" }, { path: "/setup" }], location) !== null;
+  useEffect(() => {
+    if (authentication) useVideoStudioDraftStore.getState().clear();
+  }, [authentication]);
   return <QueryScopedRoutes key={authentication ? "auth" : "workspace"} />;
 }
 
@@ -93,6 +100,7 @@ function AppRoutes() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/image-studio" element={<ImageStudioPage />} />
+          <Route path="/video-studio" element={<VideoStudioPage />} />
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/skills" element={<SkillsPage />} />
           <Route path="/settings/llm" element={<LlmSettingsPage />} />

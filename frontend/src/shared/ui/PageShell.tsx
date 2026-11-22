@@ -18,6 +18,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, type ReactNode } from "react";
 import { useImageStudioDraftStore } from "../../features/image-studio/imageStudioDraft";
+import { useVideoStudioDraftStore } from "../../features/video-studio/videoStudioDraft";
 import { useCanvasStore } from "../../features/canvas/canvasStore";
 import { Link, Navigate, useLocation, useMatch, useNavigate } from "react-router";
 import { HTTP_STATUS, ApiError, getCurrentUser, logout } from "../api/client";
@@ -46,6 +47,13 @@ const NAVIGATION = [
       return t("imageStudio.title");
     },
     icon: ImageSquare,
+  },
+  {
+    to: "/video-studio",
+    get label() {
+      return t("videoStudio.title");
+    },
+    icon: FilmStrip,
   },
   {
     to: "/library",
@@ -121,7 +129,7 @@ const NAVIGATION = [
 
 /** Settings retain the same destinations and collapse state as the workspace. */
 const SETTINGS_GROUPS = [
-  { label: "ui.pageShell.workspace", paths: ["/projects", "/image-studio", "/library", "/skills"] },
+  { label: "ui.pageShell.workspace", paths: ["/projects", "/image-studio", "/video-studio", "/library", "/skills"] },
   {
     label: "settings.workspace.configuration",
     paths: ["/settings/director", "/settings/providers", "/settings/media", "/settings/functions", "/settings/storage"],
@@ -148,14 +156,22 @@ export function PageShell({
   const location = useLocation();
   const navigation = useRef<HTMLElement>(null);
   const isImageStudio = !!useMatch("/image-studio");
+  const isVideoStudio = !!useMatch("/video-studio");
   const activePath = isImageStudio
     ? "/image-studio"
-    : location.pathname === "/settings/llm"
-      ? "/settings/providers"
-      : location.pathname;
+    : isVideoStudio
+      ? "/video-studio"
+      : location.pathname === "/settings/llm"
+        ? "/settings/providers"
+        : location.pathname;
   const isSettings = activePath.startsWith("/settings/");
   const isStudio =
-    isSettings || activePath === "/projects" || isImageStudio || activePath === "/library" || activePath === "/skills";
+    isSettings ||
+    activePath === "/projects" ||
+    isImageStudio ||
+    isVideoStudio ||
+    activePath === "/library" ||
+    activePath === "/skills";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const session = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
@@ -164,6 +180,7 @@ export function PageShell({
     onSuccess: () => {
       useCanvasStore.getState().clearTextGenerationDrafts();
       useImageStudioDraftStore.getState().clear();
+      useVideoStudioDraftStore.getState().clear();
       queryClient.clear();
       navigate("/login", { replace: true });
     },
@@ -206,9 +223,9 @@ export function PageShell({
   // A failed background refresh must not unmount forms and discard their drafts.
   if (!session.data) return <main className="app-page app-page-loading">{sessionError}</main>;
 
-  if (isImageStudio) {
+  if (isImageStudio || isVideoStudio) {
     return (
-      <div className="app-page app-shell app-shell--image-studio">
+      <div className={cn("app-page app-shell", isVideoStudio ? "app-shell--video-studio" : "app-shell--image-studio")}>
         <a className="app-skip-link" href="#page-content">
           {t("ui.pageShell.skipToContent")}
         </a>

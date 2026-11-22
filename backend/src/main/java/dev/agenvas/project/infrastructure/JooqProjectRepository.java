@@ -46,14 +46,17 @@ public class JooqProjectRepository implements ProjectRepository {
     }
 
     @Override
-    public Project ensureImageStudioScope(Project candidate) {
+    public Project ensureStudioScope(Project candidate, ProjectPurpose purpose) {
+        if (purpose == ProjectPurpose.CANVAS)
+            throw new IllegalArgumentException("Canvas projects do not have a unique owner scope");
+        String storedPurpose = purpose.name();
         dsl.insertInto(PROJECT)
                 .set(PROJECT.ID, candidate.id())
                 .set(PROJECT.OWNER_ID, candidate.ownerId())
                 .set(PROJECT.NAME, candidate.name())
                 .set(PROJECT.ASPECT_RATIO, candidate.aspectRatio().name())
                 .set(PROJECT.STATUS, candidate.status().name())
-                .set(PROJECT.PURPOSE, ProjectPurpose.IMAGE_STUDIO.name())
+                .set(PROJECT.PURPOSE, storedPurpose)
                 .set(PROJECT.EVENT_SEQ, 0L)
                 .set(PROJECT.VERSION, 0L)
                 .set(PROJECT.CREATED_AT, atUtc(candidate.createdAt()))
@@ -64,21 +67,12 @@ public class JooqProjectRepository implements ProjectRepository {
         // next READ COMMITTED statement then sees that same winner, including on first entry.
         return dsl.selectFrom(PROJECT)
                 .where(PROJECT.OWNER_ID.eq(candidate.ownerId()))
-                .and(PROJECT.PURPOSE.eq(ProjectPurpose.IMAGE_STUDIO.name()))
+                .and(PROJECT.PURPOSE.eq(storedPurpose))
                 .fetchSingle(this::map);
     }
 
     @Override
-    public boolean isCanvasScope(UUID ownerId, UUID projectId) {
-        return isScope(ownerId, projectId, ProjectPurpose.CANVAS);
-    }
-
-    @Override
-    public boolean isImageStudioScope(UUID ownerId, UUID projectId) {
-        return isScope(ownerId, projectId, ProjectPurpose.IMAGE_STUDIO);
-    }
-
-    private boolean isScope(UUID ownerId, UUID projectId, ProjectPurpose purpose) {
+    public boolean isScope(UUID ownerId, UUID projectId, ProjectPurpose purpose) {
         return dsl.fetchExists(dsl.selectOne().from(PROJECT)
                 .where(PROJECT.ID.eq(projectId)).and(PROJECT.OWNER_ID.eq(ownerId))
                 .and(PROJECT.PURPOSE.eq(purpose.name())));

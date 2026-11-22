@@ -17,6 +17,7 @@ import dev.agenvas.provider.infrastructure.ArkSeedanceClient;
 import dev.agenvas.provider.infrastructure.ArkMediaDownloadPolicy;
 import dev.agenvas.provider.application.PinnedMediaExecution.Configuration;
 import dev.agenvas.shared.http.HttpTimeouts;
+import dev.agenvas.task.domain.MediaExecutionSurface;
 import dev.agenvas.task.domain.Task;
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -271,10 +272,21 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         return projects.get(context.ownerId(), context.lease().projectId()).aspectRatio();
     }
 
+    private Project.AspectRatio frameAspect(AttemptContext context) {
+        if (!MediaExecutionSurface.isVideoStudio(context.lease()))
+            return aspect(context);
+        return switch (ratio(context)) {
+            case VideoGenerationParameters.LANDSCAPE_ASPECT_RATIO -> Project.AspectRatio.LANDSCAPE_16_9;
+            case VideoGenerationParameters.PORTRAIT_ASPECT_RATIO -> Project.AspectRatio.PORTRAIT_9_16;
+            case VideoGenerationParameters.SQUARE_ASPECT_RATIO -> Project.AspectRatio.SQUARE_1_1;
+            default -> throw new IllegalStateException("Pinned Seedance aspect ratio is invalid");
+        };
+    }
+
     private String ratio(AttemptContext context) {
         // Older accepted tasks have no resolved ratio and keep their historical fallback.
         JsonNode frozen = context.lease().input().path("mediaInput").path("providerParameters").path("aspectRatio");
-        if (!frozen.isMissingNode()) {
+        if (MediaExecutionSurface.isVideoStudio(context.lease()) || !frozen.isMissingNode()) {
             if (!frozen.isTextual() || !java.util.Set.of("16:9", "9:16", "1:1").contains(frozen.asText()))
                 throw new IllegalStateException("Pinned Seedance aspect ratio is invalid");
             return frozen.asText();
@@ -335,13 +347,13 @@ public class ArkSeedance2Adapter implements MediaAdapter {
             if (source == null)
                 throw new IllegalArgumentException(
                         "Pinned video input cannot be decoded");
-            Project.AspectRatio projectAspect = aspect(context);
-            int width = projectAspect == Project.AspectRatio.PORTRAIT_9_16
+            Project.AspectRatio frameAspect = frameAspect(context);
+            int width = frameAspect == Project.AspectRatio.PORTRAIT_9_16
                     ? 720
-                    : projectAspect == Project.AspectRatio.SQUARE_1_1 ? 1024 : 1280;
-            int height = projectAspect == Project.AspectRatio.PORTRAIT_9_16
+                    : frameAspect == Project.AspectRatio.SQUARE_1_1 ? 1024 : 1280;
+            int height = frameAspect == Project.AspectRatio.PORTRAIT_9_16
                     ? 1280
-                    : projectAspect == Project.AspectRatio.SQUARE_1_1 ? 1024 : 720;
+                    : frameAspect == Project.AspectRatio.SQUARE_1_1 ? 1024 : 720;
             BufferedImage output = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
             Graphics2D graphics = output.createGraphics();
             try {

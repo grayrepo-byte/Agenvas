@@ -1,0 +1,62 @@
+.video-studio-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-3);
+  width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.video-studio-result-header,
+.video-studio-result-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ui-space-2);
+}
+
+.video-studio-result-header h2 {
+  margin: 0;
+  font-size: var(--ui-text-sm);
+  font-weight: 600;
+}
+
+.video-studio-result-saved {
+  color: var(--ui-text-secondary);
+  font-size: var(--ui-text-xs);
+}
+
+.video-studio-result-placeholder {
+  display: grid;
+  place-items: center;
+  min-height: min(32vh, 16rem);
+  border: 1px dashed var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+}
+
+.video-studio-result-select {
+  max-width: 100%;
+  align-self: flex-start;
+}
+
+.video-studio-preview {
+  width: min(100%, calc(var(--video-studio-preview-ratio) * min(52vh, 34rem)));
+  aspect-ratio: var(--video-studio-preview-ratio);
+  align-self: center;
+  overflow: hidden;
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-bg);
+}
+
+.video-studio-preview > :is(video, img) {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+@media (max-width: 640px) {
+  .video-studio-results .video-review-transport .ui-range {
+    flex-basis: 50%;
+  }
+}

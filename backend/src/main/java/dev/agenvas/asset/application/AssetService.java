@@ -105,9 +105,7 @@ public class AssetService {
                 requireActivePreparation(stillActive);
                 var file = storage.recoverImage(project, id)
                         .orElseGet(() -> readImport(source, input -> storage.storeImage(project, id, input)));
-                yield new Asset(id, project, kind, file.objectKey(), file.contentType(), file.byteSize(),
-                        file.sha256(), file.width(), file.height(), null, file.thumbnailKey(),
-                        file.thumbnailByteSize(), file.thumbnailSha256(), now());
+                yield preparedImage(project, id, file);
             }
             case VIDEO -> {
                 requireActivePreparation(stillActive);
@@ -143,9 +141,29 @@ public class AssetService {
      */
     public <T> T withPreparedUpload(UUID owner, UUID project, UUID id, Asset.MediaKind kind,
             Supplier<InputStream> source, java.util.function.Function<Asset, T> publish) {
+        return withPreparedMedia(owner, project, id, kind,
+                () -> prepareMedia(owner, project, id, kind, source, () -> true), publish);
+    }
+
+    /** Installs a decoded static frame under a fresh identity, then publishes it with its artifact. */
+    public <T> T withPreparedStaticImageUpload(UUID owner, UUID project, InputStream source,
+            java.util.function.Function<Asset, T> publish) {
+        UUID id = UUID.randomUUID();
+        return withPreparedMedia(owner, project, id, Asset.MediaKind.IMAGE,
+                () -> preparedImage(project, id, storage.storeStaticImage(project, id, source)), publish);
+    }
+
+    private Asset preparedImage(UUID project, UUID id, LocalAssetStorage.StoredImage file) {
+        return new Asset(id, project, Asset.MediaKind.IMAGE, file.objectKey(), file.contentType(), file.byteSize(),
+                file.sha256(), file.width(), file.height(), null, file.thumbnailKey(), file.thumbnailByteSize(),
+                file.thumbnailSha256(), now());
+    }
+
+    private <T> T withPreparedMedia(UUID owner, UUID project, UUID id, Asset.MediaKind kind, Supplier<Asset> prepare,
+            java.util.function.Function<Asset, T> publish) {
         projects.requireActiveProject(owner, project);
         return withMediaLock(project, id, kind, () -> {
-            Asset prepared = prepareMedia(owner, project, id, kind, source, () -> true);
+            Asset prepared = prepare.get();
             try {
                 return publish.apply(prepared);
             } catch (RuntimeException failure) {

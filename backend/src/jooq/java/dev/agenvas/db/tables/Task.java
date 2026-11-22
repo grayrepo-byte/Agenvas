@@ -21,6 +21,7 @@ import dev.agenvas.db.tables.TaskArtifactTarget.TaskArtifactTargetPath;
 import dev.agenvas.db.tables.TaskLateResult.TaskLateResultPath;
 import dev.agenvas.db.tables.TaskManualReplacement.TaskManualReplacementPath;
 import dev.agenvas.db.tables.TaskProviderPollRetry.TaskProviderPollRetryPath;
+import dev.agenvas.db.tables.VideoStudioGeneration.VideoStudioGenerationPath;
 import dev.agenvas.db.tables.records.TaskRecord;
 
 import java.time.OffsetDateTime;
@@ -465,6 +466,19 @@ public class Task extends TableImpl<TaskRecord> {
             _taskLateResult = new TaskLateResultPath(this, null, Keys.TASK_LATE_RESULT__FK_TASK_LATE_RESULT_TASK.getInverseKey());
 
         return _taskLateResult;
+    }
+
+    private transient VideoStudioGenerationPath _videoStudioGeneration;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.video_studio_generation</code> table
+     */
+    public VideoStudioGenerationPath videoStudioGeneration() {
+        if (_videoStudioGeneration == null)
+            _videoStudioGeneration = new VideoStudioGenerationPath(this, null, Keys.VIDEO_STUDIO_GENERATION__FK_VIDEO_STUDIO_GENERATION_TASK.getInverseKey());
+
+        return _videoStudioGeneration;
     }
 
     private transient TaskProviderPollRetryPath _taskProviderPollRetry;

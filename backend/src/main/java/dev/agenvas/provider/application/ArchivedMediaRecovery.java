@@ -7,7 +7,10 @@ import static dev.agenvas.provider.domain.MediaAdapterRegistry.SEED_AUDIO_1;
 
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.provider.domain.AttemptContext;
+import dev.agenvas.task.domain.MediaExecutionSurface;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -26,6 +29,8 @@ public class ArchivedMediaRecovery {
     /** This path does not load current provider credentials or invoke a media adapter. */
     public Optional<ObjectNode> recover(AttemptContext attempt) {
         var task = attempt.lease();
+        if ("MOCK_VIDEO".equals(attempt.binding().adapterId()) && MediaExecutionSurface.isVideoStudio(task))
+            return recoverMockStudioVideo(attempt);
         String adapterId = attempt.binding().adapterId();
         return switch (adapterId) {
             case OPENAI_GPT_IMAGE_2, GOOGLE_NANO_BANANA_2, LOCAL_IMAGE_PROCESSOR ->
@@ -37,5 +42,27 @@ public class ArchivedMediaRecovery {
                                 MockAudioAdapter.ADAPTER_ID.equals(adapterId)));
             default -> Optional.empty();
         };
+    }
+
+    private Optional<ObjectNode> recoverMockStudioVideo(AttemptContext attempt) {
+        var task = attempt.lease();
+        try {
+            // This fallback is reached only when no files exist under the original Task's stable video key.
+            var asset = assets.archiveTaskVideo(attempt.ownerId(), task.projectId(), task.id(), () -> {
+                throw new MissingVideoArchive();
+            });
+            // Same local result identity as MockGenerationGateway; never invoke submit to reconstruct it.
+            UUID mockId = UUID.nameUUIDFromBytes((task.projectId() + ":" + attempt.requestKey())
+                    .getBytes(StandardCharsets.UTF_8));
+            return Optional.of(MockVideoRenderer.resultContent(mapper, task, asset.id(), "mock-" + mockId));
+        } catch (MissingVideoArchive absent) {
+            return Optional.empty();
+        }
+    }
+
+    private static final class MissingVideoArchive extends RuntimeException {
+        MissingVideoArchive() {
+            super(null, null, false, false);
+        }
     }
 }

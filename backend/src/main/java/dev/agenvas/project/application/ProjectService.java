@@ -2,6 +2,7 @@ package dev.agenvas.project.application;
 
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.project.domain.Project;
+import dev.agenvas.project.domain.ProjectPurpose;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -59,17 +60,26 @@ public class ProjectService {
     /** One internal owner scope supplies existing task/asset authorization without creating canvas nodes. */
     @Transactional
     public Project ensureImageStudioScope(UUID ownerId) {
+        return ensureStudioScope(ownerId, ProjectPurpose.IMAGE_STUDIO, "Image Studio", Project.AspectRatio.SQUARE_1_1);
+    }
+
+    /** The video Studio has its own storage scope, separate from image Studio and canvases. */
+    @Transactional
+    public Project ensureVideoStudioScope(UUID ownerId) {
+        return ensureStudioScope(ownerId, ProjectPurpose.VIDEO_STUDIO, "Video Studio", Project.AspectRatio.LANDSCAPE_16_9);
+    }
+
+    private Project ensureStudioScope(UUID ownerId, ProjectPurpose purpose, String name, Project.AspectRatio aspectRatio) {
         Instant now = clock.instant();
-        return projects.ensureImageStudioScope(new Project(UUID.randomUUID(), ownerId,
-                "Image Studio", Project.AspectRatio.SQUARE_1_1, Project.Status.ACTIVE,
-                0, 0, now, now, null));
+        return projects.ensureStudioScope(new Project(UUID.randomUUID(), ownerId,
+                name, aspectRatio, Project.Status.ACTIVE, 0, 0, now, now, null), purpose);
     }
 
     /** Public canvas routes hide internal scopes using the same absent/foreign 404 response. */
     @Transactional(readOnly = true)
     public Project requireCanvasProject(UUID ownerId, UUID projectId) {
         Project project = get(ownerId, projectId);
-        if (!projects.isCanvasScope(ownerId, projectId))
+        if (!projects.isScope(ownerId, projectId, ProjectPurpose.CANVAS))
             throw notFound();
         return project;
     }
@@ -77,7 +87,17 @@ public class ProjectService {
     /** Permanent Studio file cleanup must never operate on an ordinary canvas scope. */
     @Transactional(readOnly = true)
     public void requireImageStudioScope(UUID ownerId, UUID projectId) {
-        if (!projects.isImageStudioScope(ownerId, projectId))
+        requireStudioScope(ownerId, projectId, ProjectPurpose.IMAGE_STUDIO);
+    }
+
+    /** Video inputs and results must belong to the current owner's video Studio scope. */
+    @Transactional(readOnly = true)
+    public void requireVideoStudioScope(UUID ownerId, UUID projectId) {
+        requireStudioScope(ownerId, projectId, ProjectPurpose.VIDEO_STUDIO);
+    }
+
+    private void requireStudioScope(UUID ownerId, UUID projectId, ProjectPurpose purpose) {
+        if (!projects.isScope(ownerId, projectId, purpose))
             throw notFound();
     }
 
@@ -245,7 +265,7 @@ public class ProjectService {
     public void delete(UUID ownerId, UUID projectId, long expectedVersion) {
         if (expectedVersion < 0)
             throw validation(ApiMessage.of("api.project-service.invalid-expected-version"));
-        if (!projects.isCanvasScope(ownerId, projectId))
+        if (!projects.isScope(ownerId, projectId, ProjectPurpose.CANVAS))
             throw notFound();
         ProjectRepository.RunSlot slot = projects.lockRunSlot(ownerId, projectId).orElseThrow(this::notFound);
         Project current = getRetainedProject(ownerId, projectId);

@@ -14,7 +14,9 @@ import dev.agenvas.provider.domain.MediaPlatform;
 import dev.agenvas.provider.domain.ProviderResultManifest;
 import dev.agenvas.provider.domain.RunningHubDefinition.OutputKind;
 import dev.agenvas.provider.domain.Submission;
+import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.error.ProviderFailureCodes;
+import dev.agenvas.task.application.ImageGenerationPreparation;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.MediaExecutionSurface;
 import dev.agenvas.task.domain.Task;
@@ -81,6 +83,10 @@ public class MediaExecutionWorker {
                     continue;
                 }
                 UUID ownerId = tasks.ownerForWorker(task);
+                if (MediaExecutionSurface.isVideoStudio(task) && !studioFramesAreStatic(ownerId, task)) {
+                    tasks.blockStaleInput(task, workerId);
+                    continue;
+                }
                 AttemptContext preflight = new AttemptContext(task, binding, ownerId, null, null);
                 String preflightFailure = adapter.preflightFailure(preflight);
                 if (preflightFailure != null) {
@@ -90,7 +96,7 @@ public class MediaExecutionWorker {
                 UUID requestKey;
                 try {
                     requestKey = tasks.beginSubmission(task, workerId, binding);
-                } catch (dev.agenvas.shared.error.ApiProblemException problem) {
+                } catch (ApiProblemException problem) {
                     if ("TASK_INPUT_STALE".equals(problem.code())
                             || "TASK_PROJECT_ARCHIVED".equals(problem.code())
                             || "MEDIA_CAPABILITY_CHANGED".equals(problem.code())) {
@@ -110,6 +116,18 @@ public class MediaExecutionWorker {
             }
         }
         return claimed.size();
+    }
+
+    private boolean studioFramesAreStatic(UUID ownerId, Task task) {
+        try {
+            for (var frame : task.input().path("mediaInput").path("images")) {
+                ImageGenerationPreparation.requireStaticImage(assets.requireReadyMedia(ownerId, task.projectId(),
+                        UUID.fromString(frame.path("assetId").asText()), Asset.MediaKind.IMAGE));
+            }
+            return true;
+        } catch (ApiProblemException | IllegalArgumentException unavailable) {
+            return false;
+        }
     }
 
     /** Query accepted original IDs or resume confirmed local archives; neither path can submit generation. */
