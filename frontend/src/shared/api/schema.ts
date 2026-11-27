@@ -5290,6 +5290,145 @@ export interface paths {
         get: operations["getImageStudioBatch"];
         put?: never;
         post?: never;
+        /** 从本人工作台历史删除整批，可选永久清理该批的生成图片 */
+        delete: operations["deleteImageStudioBatch"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/context": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 读取当前所有者的私有视频工作台和可用能力
+         * @description 复用画布已发布且启用的视频生成能力、连接和输入约束。不要求选择项目或创建画布节点；没有兼容能力时返回空目录。
+         */
+        get: operations["getVideoStudioContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/frames": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 上传并固定私有静态帧图版本
+         * @description 只接受一个实际可解码的静态图片文件（最多 20 MiB、4000 万像素），不接受动态图片、外部 URL 或跨作用域引用。不创建画布节点；在生成请求中指定首帧或尾帧角色。
+         */
+        post: operations["uploadVideoStudioFrame"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/references/{kind}": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                kind: components["schemas"]["VideoStudioReferenceKind"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 上传并固定私有参考素材版本
+         * @description 单文件上传，只接受实际可解码的静态图片、视频或音频。不接受外部 URL 或跨作用域引用，不创建画布节点。
+         */
+        post: operations["uploadVideoStudioReference"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/generations": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /** 读取当前所有者的视频生成历史 */
+        get: operations["listVideoStudioGenerations"];
+        put?: never;
+        /**
+         * 原子受理一次视频生成并固定输入和能力版本
+         * @description 不创建画布节点或 Run，也不写入生图历史。当前所有者同键同请求返回原记录，即使能力随后变化；
+         *     同键不同请求或新命令使用失效能力版本时返回 409。未收到受理回执时，仅用原键和原请求核对。
+         *     供应商受理不确定由任务 UNKNOWN 表示；与浏览器没有收到回执、任务 FAILED 或归档受阻不同。
+         *     查询和恢复仅处理原请求或结果，不重新调用生成。
+         */
+        post: operations["createVideoStudioGeneration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/generations/{generationId}": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                generationId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * 读取本人生成记录的固定设置、任务状态与私有归档
+         * @description 刷新、轮询和历史回填不触发生成。只返回私有归档标识，不返回供应商 URL。
+         */
+        get: operations["getVideoStudioGeneration"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5300,6 +5439,175 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {string} */
+        VideoStudioMode: "TEXT" | "START_END" | "GENERAL_REFERENCE";
+        /** @enum {string} */
+        VideoStudioAspectRatio: "16:9" | "9:16" | "1:1";
+        VideoStudioContext: {
+            /**
+             * Format: uuid
+             * @description 仅用于私有归档访问的内部作用域
+             */
+            projectId: string;
+            /** Format: uuid */
+            defaultCapabilityId: string | null;
+            capabilities: components["schemas"]["VideoStudioCapability"][];
+        };
+        VideoStudioCapability: {
+            /** Format: uuid */
+            capabilityId: string;
+            capabilityVersion: number;
+            name: string;
+            connectionName: string;
+            adapterId: string;
+            modes: components["schemas"]["VideoStudioMode"][];
+            defaultMode: components["schemas"]["VideoStudioMode"];
+            supportsEndFrame: boolean;
+            requiresEndFrame: boolean;
+            minDurationSeconds: number | null;
+            maxDurationSeconds: number | null;
+            defaultDurationSeconds: number | null;
+            aspectRatios: components["schemas"]["VideoStudioAspectRatio"][];
+            defaultAspectRatio: components["schemas"]["VideoStudioAspectRatio"] | null;
+            videoResolutions: string[];
+            defaultVideoResolution: string | null;
+            referenceLimits: {
+                image: number;
+                video: number;
+                audio: number;
+            };
+            /** @description 已发布协议的创作者字段，不含工作流图、接口地址或凭证；普通模型为 null。 */
+            fields: components["schemas"]["CreatorInputField"][] | null;
+            defaultDynamicValues: components["schemas"]["VideoStudioDynamicValues"];
+        };
+        VideoStudioFrame: {
+            /** Format: uuid */
+            artifactId: string;
+            /** Format: uuid */
+            versionId: string;
+            /** Format: uuid */
+            assetId: string;
+            /** Format: uuid */
+            projectId: string;
+            width: number;
+            height: number;
+        };
+        /** @enum {string} */
+        VideoStudioReferenceKind: "IMAGE" | "VIDEO" | "AUDIO";
+        VideoStudioReferenceInput: {
+            kind: components["schemas"]["VideoStudioReferenceKind"];
+            /** Format: uuid */
+            versionId: string;
+            /** @description 已发布工作流的具名素材槽；普通全能参考留空 */
+            fieldKey?: string | null;
+        };
+        VideoStudioReferenceAsset: {
+            /** Format: uuid */
+            artifactId: string;
+            /** Format: uuid */
+            versionId: string;
+            /** Format: uuid */
+            assetId: string;
+            /** Format: uuid */
+            projectId: string;
+            kind: components["schemas"]["VideoStudioReferenceKind"];
+            fieldKey: string | null;
+            width: number | null;
+            height: number | null;
+            durationMs: number | null;
+            contentType: string;
+        };
+        /** @description 已发布协议中可编辑的非素材参数；提示词、时长、素材版本通过各自字段提供。 */
+        VideoStudioDynamicValues: {
+            [key: string]: components["schemas"]["RunningHubScalar"];
+        };
+        /** @description TEXT 不接受素材；START_END 使用固定静态帧，尾帧按能力约束；GENERAL_REFERENCE 使用有序私有参考版本，具名工作流必须指定槽位。 */
+        CreateVideoStudioGeneration: {
+            /** Format: uuid */
+            capabilityId: string;
+            capabilityVersion: number;
+            /** @description 按发布的能力校验；没有必填提示词的工作流可传空字符串 */
+            prompt: string;
+            mode: components["schemas"]["VideoStudioMode"];
+            /** @description 整数秒；不映射时长或由供应商决定时传 null */
+            durationSeconds: number | null;
+            /**
+             * @description 缺省使用能力默认值；AUTO 固定为 16:9，不继承画布设置。
+             * @enum {string}
+             */
+            aspectRatio?: "AUTO" | "16:9" | "9:16" | "1:1";
+            /**
+             * Format: uuid
+             * @description START_FRAME 角色
+             */
+            startFrameVersionId?: string | null;
+            /**
+             * Format: uuid
+             * @description 可选的 END_FRAME 角色
+             */
+            endFrameVersionId?: string | null;
+            references?: components["schemas"]["VideoStudioReferenceInput"][];
+            /** @description 普通模型在已发布档位中选择 */
+            videoResolution?: string;
+            dynamicValues?: components["schemas"]["VideoStudioDynamicValues"];
+        };
+        VideoStudioGeneration: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            projectId: string;
+            /** Format: uuid */
+            capabilityId: string;
+            capabilityVersion: number;
+            prompt: string;
+            mode: components["schemas"]["VideoStudioMode"];
+            /** @description 冻结的有效秒数，不是成品探测时长 */
+            durationSeconds: number | null;
+            aspectRatio: components["schemas"]["VideoStudioAspectRatio"] | null;
+            videoResolution: string | null;
+            dynamicValues: components["schemas"]["VideoStudioDynamicValues"];
+            references: components["schemas"]["VideoStudioReferenceAsset"][];
+            startFrame: components["schemas"]["VideoStudioFrame"] | null;
+            endFrame: components["schemas"]["VideoStudioFrame"] | null;
+            /** Format: date-time */
+            createdAt: string;
+            task: components["schemas"]["VideoStudioTask"];
+        };
+        VideoStudioTask: {
+            /** Format: uuid */
+            id: string;
+            /** @description UNKNOWN 表示供应商受理不确定，BLOCKED 可表示归档受阻；两者均不表示应重新生成。 */
+            status: components["schemas"]["TaskStatus"];
+            /** Format: int64 */
+            version: number;
+            errorCode: string | null;
+            results: components["schemas"]["VideoStudioResult"][];
+        };
+        /**
+         * @description 只包含归档标识。使用生成记录的 projectId 与 assetId，通过认证保护的
+         *     /api/v1/projects/{projectId}/assets/{assetId}/content（GET、HEAD 与 Range）播放或下载原视频，
+         *     或通过同一素材的 /thumbnail 读取封面。不会返回供应商 URL。
+         */
+        VideoStudioResult: {
+            /** Format: uuid */
+            artifactId: string;
+            /** Format: uuid */
+            artifactVersionId: string;
+            /** Format: uuid */
+            assetId: string;
+            width: number | null;
+            height: number | null;
+            /**
+             * Format: int64
+             * @description 探测得到的媒体时长（毫秒）
+             */
+            durationMs: number | null;
+            contentType: string;
+        };
+        VideoStudioGenerationPage: {
+            items: components["schemas"]["VideoStudioGeneration"][];
+            nextCursor: string | null;
+        };
         /** @description 工作台静态图片参数；缺省由能力补全并冻结，AUTO 显式转换为 1:1，不使用画布设置。 */
         ImageStudioParameters: {
             /** @enum {string} */
@@ -20250,6 +20558,300 @@ export interface operations {
                     "application/json": components["schemas"]["ImageStudioBatch"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteImageStudioBatch: {
+        parameters: {
+            query?: {
+                /** @description 默认仅移除记录。显式传 true 时清理生成原图与缩略图，不清理输入参考图。 */
+                deleteFiles?: boolean;
+            };
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                batchId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已删除历史记录，永久文件清理已受理（或此前已受理） */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 历史记录已删除，保留文件 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getVideoStudioContext: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 工作台上下文 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoStudioContext"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    uploadVideoStudioFrame: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 当前所有者的归档帧图与固定版本 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoStudioFrame"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description 文件超过上传大小限制 */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description 请求 Content-Type 不受支持 */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
+            503: components["responses"]["ObjectStorageFailure"];
+        };
+    };
+    uploadVideoStudioReference: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                kind: components["schemas"]["VideoStudioReferenceKind"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 当前所有者的私有参考素材及固定版本 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoStudioReferenceAsset"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description 文件超过上传大小限制 */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description 请求 Content-Type 不受支持 */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
+            503: components["responses"]["ObjectStorageFailure"];
+        };
+    };
+    listVideoStudioGenerations: {
+        parameters: {
+            query?: {
+                /** @description 上一页返回的不透明游标，固定创建时间与记录 ID。 */
+                before?: string;
+                limit?: number;
+            };
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 最新优先的历史记录及下页游标 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoStudioGenerationPage"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createVideoStudioGeneration: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateVideoStudioGeneration"];
+            };
+        };
+        responses: {
+            /** @description 已受理或同键重放的生成记录，不代表视频已归档 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoStudioGeneration"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description 请求 Content-Type 不受支持 */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    getVideoStudioGeneration: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                generationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 生成记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoStudioGeneration"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

@@ -31,10 +31,10 @@ class ImageStudioMigrationPostgresIT {
                             'Synthetic existing canvas','PORTRAIT_9_16','ACTIVE',now(),now());
                     """);
         }
-        var upgraded = Flyway.configure()
+        var initialStudio = Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                .locations("classpath:db/migration").load();
-        assertThat(upgraded.migrate().migrationsExecuted).isGreaterThanOrEqualTo(2);
+                .locations("classpath:db/migration").target("66").load();
+        assertThat(initialStudio.migrate().migrationsExecuted).isEqualTo(2);
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
                 POSTGRES.getPassword()); var sql = connection.createStatement()) {
             try (var rows = sql.executeQuery("select purpose,aspect_ratio from project")) {
@@ -77,6 +77,30 @@ class ImageStudioMigrationPostgresIT {
                     """))
                     .isInstanceOf(SQLException.class)
                     .satisfies(error -> assertThat(((SQLException) error).getSQLState()).isEqualTo("23505"));
+            sql.executeUpdate("""
+                    insert into image_studio_batch(id, owner_id, project_id, command_key, request_hash, request_json,
+                                                   created_at)
+                    values ('00000000-0000-4000-8000-000000001005', '00000000-0000-4000-8000-000000001001',
+                            '00000000-0000-4000-8000-000000001003', 'prior-studio-command', repeat('a', 64),
+                            '{"schemaVersion":1}', now())
+                    """);
+        }
+        var upgraded = Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").load();
+        assertThat(upgraded.migrate().migrationsExecuted).isGreaterThanOrEqualTo(1);
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
+                POSTGRES.getPassword());
+                var sql = connection.createStatement();
+                var rows = sql.executeQuery("select command_key, deleted_at, delete_files from image_studio_batch")) {
+            assertThat(rows.next()).isTrue();
+            assertThat(rows.getString(1)).isEqualTo("prior-studio-command");
+            assertThat(rows.getObject(2)).isNull();
+            assertThat(rows.getObject(3)).isNull();
+            assertThat(rows.next()).isFalse();
+            assertThatThrownBy(() -> sql.executeUpdate("update image_studio_batch set deleted_at = now()"))
+                    .isInstanceOf(SQLException.class)
+                    .satisfies(error -> assertThat(((SQLException) error).getSQLState()).isEqualTo("23514"));
         }
         assertThat(upgraded.migrate().migrationsExecuted).isZero();
     }

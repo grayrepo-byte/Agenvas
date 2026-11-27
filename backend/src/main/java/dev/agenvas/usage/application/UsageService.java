@@ -404,19 +404,31 @@ public class UsageService {
                 workflowVersion, imageUsage.path("model").asText(null), clock.instant());
     }
 
+    // JSONB round-trips can change a numeric node's Java type. Keep JSON strings and nulls distinct.
+    private static int compareQuantityValues(JsonNode stored, JsonNode requested) {
+        if (stored.isNumber() && requested.isNumber())
+            return stored.decimalValue().compareTo(requested.decimalValue());
+        return stored.toString().compareTo(requested.toString());
+    }
+
+    // PostgreSQL NUMERIC(18,6) returns e.g. 0.000000 for the same known-zero local cost.
+    private static boolean sameAmount(BigDecimal stored, BigDecimal requested) {
+        return stored == null ? requested == null : requested != null && stored.compareTo(requested) == 0;
+    }
+
     /** 幂等插入账目；重放时逐字段比较载荷，冲突则拒绝并在首次插入时追加事件。 */
     private void persist(UUID ownerId, UsageEntry entry) {
         if (!ledger.insertOnce(entry)) {
             UsageEntry prior = ledger.findByOperationKey(entry.operationKey()).orElseThrow();
             if (!prior.projectId().equals(entry.projectId())
-                    || !prior.taskId().equals(entry.taskId())
+                    || !Objects.equals(prior.taskId(), entry.taskId())
                     || !Objects.equals(prior.runId(), entry.runId())
                     || prior.entryType() != entry.entryType()
-                    || !prior.quantity().equals(entry.quantity())
+                    || !prior.quantity().equals(UsageService::compareQuantityValues, entry.quantity())
                     || !prior.costSource().equals(entry.costSource())
                     || prior.costStatus() != entry.costStatus()
-                    || !Objects.equals(prior.estimatedCost(), entry.estimatedCost())
-                    || !Objects.equals(prior.actualCost(), entry.actualCost())
+                    || !sameAmount(prior.estimatedCost(), entry.estimatedCost())
+                    || !sameAmount(prior.actualCost(), entry.actualCost())
                     || !Objects.equals(prior.currency(), entry.currency())
                     || !Objects.equals(prior.providerConfigVersion(),
                             entry.providerConfigVersion())

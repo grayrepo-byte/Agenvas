@@ -51,8 +51,10 @@ public final class MockChatGateway implements ChatGateway {
                      "nextSteps":["Return the clearly labelled mock response"],"references":[],"blockers":[]}
                     """;
         }
-        AssistantMessage assistant = new AssistantMessage(
-                reply.substring(0, Math.min(reply.length(), MAX_REPLY_CHARS)));
+        int end = Math.min(reply.length(), MAX_REPLY_CHARS);
+        if (end < reply.length() && Character.isHighSurrogate(reply.charAt(end - 1)))
+            end--;
+        AssistantMessage assistant = new AssistantMessage(reply.substring(0, end));
         ChatResponseMetadata metadata = ChatResponseMetadata.builder()
                 .id(RESPONSE_ID).model(MODEL_ID).build();
         return new Exchange(configVersion,

@@ -1,8 +1,9 @@
 package dev.agenvas.canvas.domain;
 
 import java.math.BigDecimal;
-
+import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -42,6 +43,26 @@ public record CanvasItem(
         long version,
         Instant createdAt,
         Instant updatedAt) {
+
+    // Match PostgreSQL NUMERIC(14,3) before comparing a replay or returning a newly placed item.
+    private static final int GEOMETRY_SCALE = 3;
+
+    public CanvasItem {
+        x = storedGeometry(x);
+        y = storedGeometry(y);
+        width = storedGeometry(width);
+        height = storedGeometry(height);
+    }
+
+    private static BigDecimal storedGeometry(BigDecimal value) {
+        return value.scale() > GEOMETRY_SCALE ? value.setScale(GEOMETRY_SCALE, RoundingMode.HALF_UP) : value;
+    }
+
+    public boolean hasSameLayout(CanvasItem other) {
+        return x.compareTo(other.x) == 0 && y.compareTo(other.y) == 0
+                && width.compareTo(other.width) == 0 && height.compareTo(other.height) == 0
+                && zIndex == other.zIndex && Objects.equals(groupId, other.groupId);
+    }
 
     public CanvasItem withTitle(String title) {
         return withPresentation(title, x, y, width, height, zIndex, groupId, locked);

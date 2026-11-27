@@ -179,7 +179,7 @@ public class ProjectRecord extends UpdatableRecordImpl<ProjectRecord> {
 
     /**
      * Setter for <code>public.project.purpose</code>. 权限与存储作用域用途：CANVAS
-     * 为用户项目，IMAGE_STUDIO 为独立生图工作台内部作用域
+     * 为用户项目，IMAGE_STUDIO 和 VIDEO_STUDIO 为独立工作台内部作用域
      */
     public void setPurpose(String value) {
         set(11, value);
@@ -187,7 +187,7 @@ public class ProjectRecord extends UpdatableRecordImpl<ProjectRecord> {
 
     /**
      * Getter for <code>public.project.purpose</code>. 权限与存储作用域用途：CANVAS
-     * 为用户项目，IMAGE_STUDIO 为独立生图工作台内部作用域
+     * 为用户项目，IMAGE_STUDIO 和 VIDEO_STUDIO 为独立工作台内部作用域
      */
     public String getPurpose() {
         return (String) get(11);

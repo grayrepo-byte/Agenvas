@@ -2,15 +2,19 @@ package dev.agenvas.task.infrastructure;
 
 import static dev.agenvas.db.Tables.IMAGE_STUDIO_BATCH;
 import static dev.agenvas.db.Tables.IMAGE_STUDIO_BATCH_TASK;
+import static dev.agenvas.db.Tables.TASK;
 
 import dev.agenvas.db.tables.records.ImageStudioBatchRecord;
 import dev.agenvas.task.application.ImageStudioRepository;
+import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.jooq.DSLContext;
 import org.jooq.JSONB;
+import org.jooq.impl.DSL;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.ObjectMapper;
 
@@ -39,7 +43,8 @@ public class JooqImageStudioRepository implements ImageStudioRepository {
 
     @Override
     public List<Batch> list(UUID ownerId, Batch before, int limit) {
-        var query = dsl.selectFrom(IMAGE_STUDIO_BATCH).where(IMAGE_STUDIO_BATCH.OWNER_ID.eq(ownerId));
+        var query = dsl.selectFrom(IMAGE_STUDIO_BATCH).where(IMAGE_STUDIO_BATCH.OWNER_ID.eq(ownerId))
+                .and(IMAGE_STUDIO_BATCH.DELETED_AT.isNull());
         if (before != null) {
             var timestamp = before.createdAt().atOffset(ZoneOffset.UTC);
             query = query.and(IMAGE_STUDIO_BATCH.CREATED_AT.lt(timestamp)
@@ -73,8 +78,42 @@ public class JooqImageStudioRepository implements ImageStudioRepository {
                 .fetch(IMAGE_STUDIO_BATCH_TASK.TASK_ID);
     }
 
+    @Override
+    public boolean otherBatchReferencesAssets(UUID ownerId, UUID projectId, UUID batchId, Set<UUID> assetIds) {
+        if (assetIds.isEmpty()) {
+            return false;
+        }
+        // Every task in a batch freezes the same references, including the underlying asset of an alias.
+        var references = DSL.table("jsonb_array_elements({0} #> '{mediaInput,images}') as ref(image)",
+                TASK.INPUT_JSON);
+        var referenceAsset = DSL.field("{0}->>'assetId'", String.class, DSL.name("ref", "image"));
+        return dsl.fetchExists(dsl.selectOne().from(IMAGE_STUDIO_BATCH)
+                .join(IMAGE_STUDIO_BATCH_TASK).on(IMAGE_STUDIO_BATCH_TASK.BATCH_ID.eq(IMAGE_STUDIO_BATCH.ID)
+                        .and(IMAGE_STUDIO_BATCH_TASK.ORDINAL.eq(0)))
+                .join(TASK).on(TASK.ID.eq(IMAGE_STUDIO_BATCH_TASK.TASK_ID)
+                        .and(TASK.PROJECT_ID.eq(IMAGE_STUDIO_BATCH.PROJECT_ID)))
+                .crossJoin(references)
+                .where(IMAGE_STUDIO_BATCH.OWNER_ID.eq(ownerId))
+                .and(IMAGE_STUDIO_BATCH.PROJECT_ID.eq(projectId))
+                .and(IMAGE_STUDIO_BATCH.ID.ne(batchId))
+                .and(referenceAsset.in(assetIds.stream().map(UUID::toString).toList())));
+    }
+
+    @Override
+    public void markDeleted(UUID ownerId, UUID batchId, Instant deletedAt, boolean deleteFiles) {
+        int updated = dsl.update(IMAGE_STUDIO_BATCH)
+                .set(IMAGE_STUDIO_BATCH.DELETED_AT, deletedAt.atOffset(ZoneOffset.UTC))
+                .set(IMAGE_STUDIO_BATCH.DELETE_FILES, deleteFiles)
+                .where(IMAGE_STUDIO_BATCH.OWNER_ID.eq(ownerId).and(IMAGE_STUDIO_BATCH.ID.eq(batchId)))
+                .and(IMAGE_STUDIO_BATCH.DELETED_AT.isNull())
+                .execute();
+        if (updated != 1)
+            throw new IllegalStateException("Studio batch changed under the project lock");
+    }
+
     private Batch map(ImageStudioBatchRecord row) {
         return new Batch(row.getId(), row.getOwnerId(), row.getProjectId(), row.getCommandKey(),
-                row.getRequestHash(), mapper.readTree(row.getRequestJson().data()), row.getCreatedAt().toInstant());
+                row.getRequestHash(), mapper.readTree(row.getRequestJson().data()), row.getCreatedAt().toInstant(),
+                row.getDeleteFiles());
     }
 }

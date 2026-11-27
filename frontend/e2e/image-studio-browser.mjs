@@ -9,6 +9,7 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const syntheticMedia = "/api/v1/projects/synthetic-image-studio/assets/synthetic-studio-";
 const mediaGates = new Map();
 const mediaReads = new Map();
+const unavailableMedia = new Set();
 const screenshots = process.env.AGENVAS_E2E_SCREENSHOT_DIR;
 function holdMedia(path) {
   const gate = Promise.withResolvers();
@@ -27,9 +28,13 @@ const server = await createServer({
       enforce: "pre",
       configureServer({ middlewares }) {
         middlewares.use((request, _response, next) => {
-          const path = request.url;
+          const path = request.url?.split("?", 1)[0];
           if (!path?.startsWith(syntheticMedia)) return next();
           mediaReads.set(path, (mediaReads.get(path) ?? 0) + 1);
+          if (unavailableMedia.has(path)) {
+            _response.writeHead(503, { "Cache-Control": "no-store" }).end();
+            return;
+          }
           const gate = mediaGates.get(path);
           if (gate) void gate.promise.then(() => next());
           else next();
@@ -179,6 +184,17 @@ try {
       });
     });
   }
+  async function waitingMotion() {
+    return page(() =>
+      [".image-studio-stage", ".image-studio-generate"].flatMap(selector =>
+        document
+          .querySelector(selector)
+          .getAnimations({ subtree: true })
+          .filter(animation => animation.effect.getTiming().iterations === Infinity)
+          .map(animation => animation.animationName),
+      ),
+    );
+  }
   async function capture(name) {
     if (!screenshots) return;
     const { data } = await cdp("Page.captureScreenshot", { format: "png" });
@@ -193,6 +209,9 @@ try {
       const layout = await page(() => {
         const input = document.querySelector("textarea");
         const css = getComputedStyle(input);
+        const strip = document.querySelector(".image-studio-filmstrip");
+        const bounds = strip.getBoundingClientRect();
+        const actions = [...document.querySelector(".image-studio-result-actions").children];
         return {
           overflow: document.documentElement.scrollWidth > innerWidth,
           sidebar: !!document.querySelector(".app-sidebar"),
@@ -202,6 +221,14 @@ try {
           fit: getComputedStyle(document.querySelector(".image-studio-image-button img")).objectFit,
           refs: [...document.querySelectorAll(".image-studio-variant img")].map(i => i.getAttribute("src")),
           header: document.querySelector(".image-studio-header").getBoundingClientRect().height,
+          allVariantsVisible: [...strip.children].every(variant => {
+            const { left, right } = variant.getBoundingClientRect();
+            return left >= bounds.left && right <= bounds.right;
+          }),
+          touchActionsOnOwnRow: actions.every(action => {
+            const { top, width, height } = action.getBoundingClientRect();
+            return top >= bounds.bottom && width >= 44 && height >= 44;
+          }),
         };
       });
       assert.equal(layout.overflow, false, `${viewport.width}/${locale}: no page overflow`);
@@ -209,6 +236,47 @@ try {
       assert.equal(layout.rows, 3);
       assert.ok(layout.contentHeight >= layout.line * 3 - 1, "Three editable lines stay visible");
       assert.equal(layout.fit, "contain");
+      assert.equal(layout.allVariantsVisible, true, `${viewport.width}/${locale}: four variants fit without scrolling`);
+      if (viewport.width <= 640)
+        assert.equal(layout.touchActionsOnOwnRow, true, "Narrow actions stay below the filmstrip with 44px targets");
+      if (viewport.width === 390) {
+        assert.equal(
+          await page(() => {
+            const model = document.querySelector(".image-studio-model").getBoundingClientRect();
+            return [...document.querySelectorAll(".image-studio-parameter")].every(parameter => {
+              const label = parameter.querySelector(".image-studio-setting-label");
+              return (
+                !!label?.innerText.trim() &&
+                label.getBoundingClientRect().height > 1 &&
+                parameter.getBoundingClientRect().top >= model.bottom
+              );
+            });
+          }),
+          true,
+          "Mobile shows parameter labels beneath the model",
+        );
+        if (locale === "zh") await capture("studio-mobile-gallery.png");
+      }
+      if (viewport.width > 900 && locale === "zh") {
+        const metadataVisible = await page(() => {
+          const rows = [...document.querySelectorAll(".image-studio-history .image-studio-history-item")];
+          return (
+            rows.length > 0 &&
+            rows.every(row => {
+              const thumb = row.querySelector(".image-studio-history-thumb").getBoundingClientRect();
+              const caption = row.querySelector(".image-studio-history-caption");
+              return (
+                caption.getBoundingClientRect().top >= thumb.bottom - 1 &&
+                getComputedStyle(caption).opacity === "1" &&
+                caption.querySelector("strong").innerText.trim() &&
+                caption.querySelector("time").getBoundingClientRect().width > 0
+              );
+            })
+          );
+        });
+        assert.equal(metadataVisible, true, "Desktop history shows each prompt and date below its thumbnail");
+        await capture("studio-desktop-history.png");
+      }
       assert.ok(
         layout.refs.every(
           url => url.startsWith("/api/v1/projects/synthetic-image-studio/assets/") && url.endsWith("/thumbnail"),
@@ -245,6 +313,9 @@ try {
         await waitFor(() => document.activeElement.classList.contains("image-studio-history-toggle"));
       }
       assert.equal(await page(() => document.querySelector("textarea").value), "光影摄影练习 · 公开授权示例 · Mock");
+      const cue = await page(() => document.querySelector(".image-studio-history-prompt [role=status]")?.textContent);
+      assert.match(cue, /#SYNTHETI/);
+      if (locale === "zh") assert.match(cue, /其他设置未变/);
       await click(".image-studio-undo-history-prompt");
       assert.equal(await page(() => document.querySelector("textarea").value), "独立草稿\n第二行\n第三行");
       assert.equal(
@@ -269,7 +340,16 @@ try {
       );
       await chooseBatch("synthetic-partial-batch");
       await imageReady(1);
+      if (locale === "zh") {
+        assert.match(
+          await page(() => document.querySelector(".image-studio-task-feedback").innerText),
+          /已保存 1 \/ 2 张图片，可预览和下载/,
+        );
+      }
+      assert.equal(await page(() => document.body.innerText.includes("SYNTHETIC_PROVIDER_REJECTED")), false);
+      await click(".image-studio-task-feedback summary");
       assert.equal(await page(() => document.body.innerText.includes("SYNTHETIC_PROVIDER_REJECTED")), true);
+      assert.ok(await page(() => document.querySelector(".image-studio-result-actions a[download]")?.href));
       await chooseBatch("synthetic-saved-batch");
       await imageReady(4);
       await click(".image-studio-restore");
@@ -293,9 +373,25 @@ try {
       assert.deepEqual(evidence.unexpected, []);
       if (viewport.width === 1487 && locale === "zh") {
         await click(".image-studio-image-button");
-        await waitFor(() => !!document.querySelector(".yarl__root"));
+        await waitFor(() => !!document.querySelector(".yarl__root button[aria-label='关闭预览']:focus"));
+        const dialogImage = ".yarl__slide_current img";
+        await waitFor(selector => document.querySelector(selector)?.naturalWidth > 0, dialogImage);
+        const initial = await page(selector => document.querySelector(selector)?.getAttribute("src"), dialogImage);
+        await key("ArrowRight", "ArrowRight", 39);
+        await waitFor(
+          ({ selector, initial }) => {
+            const src = document.querySelector(selector)?.getAttribute("src");
+            return !!src && src !== initial;
+          },
+          { selector: dialogImage, initial },
+        );
+        await waitFor(() => document.querySelector(".yarl__root").innerText.includes("02 / 04"));
+        await click('.yarl__root button[aria-label="下一张图片"]');
+        await waitFor(() => document.querySelector(".yarl__root").innerText.includes("03 / 04"));
         await key("Escape", "Escape", 27);
         await waitFor(() => !document.querySelector(".yarl__root"));
+        await waitFor(() => document.querySelector(".image-studio-photo-index").innerText === "03 / 04");
+        assert.equal((await page(() => window.__imageStudio.evidence())).writes.length, 2);
         const path = await page(() =>
           document.querySelector(".image-studio-result-actions a[download]").getAttribute("href"),
         );
@@ -305,23 +401,53 @@ try {
         assert.ok((await response.arrayBuffer()).byteLength > 100);
       }
     }
+    let desktopResultWidth;
     for (const scenario of ["portrait", "landscape"]) {
       await navigate(scenario);
       await imageReady(1);
       const image = await page(() => {
         const i = document.querySelector(".image-studio-image-button img");
+        const rect = selector => document.querySelector(selector).getBoundingClientRect();
+        const hero = rect(".image-studio-hero");
+        const gallery = rect(".image-studio-gallery");
+        const photo = i.getBoundingClientRect();
+        const editor = rect(".image-studio-controls");
         return {
           width: i.clientWidth,
           height: i.clientHeight,
           ratio: i.naturalWidth / i.naturalHeight,
           fit: getComputedStyle(i).objectFit,
           overflow: document.documentElement.scrollWidth > innerWidth,
+          resultWidth: gallery.width,
+          centeredResult:
+            Math.abs(hero.left + hero.right - editor.left - editor.right) < 2 &&
+            Math.abs(hero.left - gallery.left) < 1 &&
+            Math.abs(hero.right - gallery.right) < 1 &&
+            Math.abs(photo.left + photo.width / 2 - gallery.left - gallery.width / 2) < 1 &&
+            Math.abs(rect(".image-studio-filmstrip").left - gallery.left) < 1 &&
+            Math.abs(rect(".image-studio-result-actions").right - gallery.right) < 1,
         };
       });
       assert.equal(image.fit, "contain");
       assert.equal(image.overflow, false);
       assert.ok(image.width > 40 && image.height > 70);
       assert.ok(Math.abs(image.ratio - (scenario === "portrait" ? 9 / 16 : 16 / 9)) < 0.01);
+      if (viewport.width > 900) {
+        assert.equal(image.centeredResult, true, `${scenario}: photo, filmstrip and editor share the page center`);
+        desktopResultWidth ??= image.resultWidth;
+        assert.equal(image.resultWidth, desktopResultWidth, "The desktop result column stays the same for both ratios");
+        if (scenario === "landscape") {
+          await capture("studio-desktop-alignment.png");
+          await click(".image-studio-history-toggle");
+          await waitFor(() => !document.querySelector(".image-studio-history"));
+          const offset = await page(() => {
+            const photo = document.querySelector(".image-studio-image-button").getBoundingClientRect();
+            const editor = document.querySelector(".image-studio-controls").getBoundingClientRect();
+            return (photo.left + photo.right - editor.left - editor.right) / 2;
+          });
+          assert.ok(Math.abs(offset) < 1, `Closing history must not shift the main axis (offset: ${offset}px)`);
+        }
+      }
       await page(() => document.querySelector(".image-studio-generate").scrollIntoView({ block: "nearest" }));
       assert.equal(
         await page(() => {
@@ -358,20 +484,13 @@ try {
       };
     });
     assert.ok(frame.width >= 150 && frame.height >= 70 && frame.titleFits && !frame.overflow, JSON.stringify(frame));
-    assert.equal(frame.scan, "image-studio-scan");
+    assert.deepEqual(await waitingMotion(), ["image-studio-scan"], "Only the viewfinder moves during submission");
     await cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
     await waitFor(
       () =>
         getComputedStyle(document.querySelector(".image-studio-generation-frame"), "::before").animationName === "none",
     );
-    assert.equal(
-      await page(() => getComputedStyle(document.querySelector(".image-studio-iris"), "::after").animationName),
-      "none",
-    );
-    assert.equal(
-      await page(() => getComputedStyle(document.querySelector(".image-studio-generate svg")).animationName),
-      "none",
-    );
+    assert.deepEqual(await waitingMotion(), [], "Reduced motion also keeps the slots and submit button still");
     await page(() => window.__imageStudio.acknowledge());
     await waitFor(() => document.querySelector(".image-studio-generation-frame h2")?.textContent === "排队中");
     await page(() => window.__imageStudio.startGeneration());
@@ -393,6 +512,97 @@ try {
       `Dark Studio viewport passed: ${viewport.width}×${viewport.height} × four languages, aspect ratios, submission motion and reduced motion`,
     );
   }
+  for (const viewport of viewports.slice(0, 2)) {
+    await cdp("Emulation.setDeviceMetricsOverride", { ...viewport, deviceScaleFactor: 1, mobile: false });
+    await navigate("deletion", "en");
+    await imageReady(4);
+    await click(".image-studio-restore");
+    await click("textarea");
+    await cdp("Input.insertText", { text: "Keep this working draft." });
+    const readDraft = () =>
+      page(() => ({
+        prompt: document.querySelector("textarea").value,
+        parameters: [...document.querySelectorAll(".image-studio-parameter [role=combobox]")].map(e => e.textContent),
+        references: [...document.querySelectorAll(".image-studio-reference img")].map(e => e.getAttribute("src")),
+      }));
+    const draft = await readDraft();
+    assert.match(draft.prompt, /Keep this working draft/);
+    assert.ok(draft.parameters.includes("4 images"));
+    assert.equal(draft.references.length, 1);
+    await openHistory();
+    const savedId = "synthetic-saved-batch";
+    const previousId = "synthetic-previous-batch";
+    const row = id => `.image-studio-history-item[data-batch-id="${id}"]`;
+    const trash = id => `${row(id)} + .image-studio-history-delete`;
+    const savedTrash = trash(savedId);
+    const restingDelete = await page(
+      selector => ({
+        opacity: Number(getComputedStyle(document.querySelector(selector)).opacity),
+        finePointer: matchMedia("(hover: hover) and (pointer: fine)").matches,
+      }),
+      savedTrash,
+    );
+    if (viewport.width > 900 && restingDelete.finePointer) {
+      assert.ok(restingDelete.opacity > 0 && restingDelete.opacity < 1, "Desktop deletion is visible but subdued");
+    } else {
+      assert.equal(restingDelete.opacity, 1, "Touch deletion is visible without hover");
+    }
+    const dialog = ".image-studio-delete-dialog";
+    const cancel = `${dialog} button[data-variant="outline"]`;
+    const confirm = `${dialog} button[data-variant="destructive"]`;
+    const checkbox = `${dialog} [role="checkbox"]`;
+    for (let step = 0; step < 24 && !(await page(s => document.activeElement.matches(s), savedTrash)); step++)
+      await key("Tab", "Tab", 9);
+    assert.equal(await page(s => document.activeElement.matches(s), savedTrash), true, "Delete is reachable by Tab");
+    assert.equal(await page(s => getComputedStyle(document.querySelector(s)).opacity, savedTrash), "1");
+    await key("Enter", "Enter", 13, "\r");
+    await waitFor(selector => document.activeElement.matches(selector), cancel);
+    assert.equal(await page(s => document.querySelector(s).getAttribute("aria-checked"), checkbox), "false");
+    await click(checkbox);
+    await key("Escape", "Escape", 27);
+    await waitFor(selector => document.activeElement.matches(selector), savedTrash);
+    assert.deepEqual((await page(() => window.__imageStudio.evidence())).deletions, []);
+    assert.deepEqual(await readDraft(), draft);
+
+    await key("Enter", "Enter", 13, "\r");
+    await waitFor(s => document.querySelector(s)?.getAttribute("aria-checked") === "false", checkbox);
+    await click(confirm);
+    await waitFor(s => !document.querySelector(s), row(savedId));
+    await waitFor(s => document.activeElement.matches(s), row(previousId));
+    await waitFor(() =>
+      document.querySelector(".image-studio-history-list [role=status]")?.textContent.includes("files were kept"),
+    );
+    assert.deepEqual(await readDraft(), draft);
+
+    await click(trash(previousId));
+    await click(checkbox);
+    await click(confirm);
+    await waitFor(() =>
+      document.querySelector('[role="alert"]')?.textContent.includes("An image is still referenced by another batch."),
+    );
+    assert.equal(await page(s => document.querySelector(s).getAttribute("aria-checked"), checkbox), "true");
+    assert.equal(await page(s => document.querySelector(s).getAttribute("aria-pressed"), row(previousId)), "true");
+    assert.deepEqual(await readDraft(), draft);
+    await click(confirm);
+    await waitFor(() =>
+      document.querySelector(".image-studio-history-list [role=status]")?.textContent.includes("has been queued"),
+    );
+    await waitFor(s => !document.querySelector(s), dialog);
+    await waitFor(() => !document.querySelector('button[aria-label="Refresh studio"]').disabled);
+    await click('button[aria-label="Refresh studio"]');
+    await waitFor(() => !document.querySelector('button[aria-label="Refresh studio"]').disabled);
+    assert.equal(await page(s => document.querySelectorAll(s).length, `${row(savedId)},${row(previousId)}`), 0);
+    assert.deepEqual(await readDraft(), draft);
+    const evidence = await page(() => window.__imageStudio.evidence());
+    assert.deepEqual(evidence.deletions, [
+      { id: savedId, deleteFiles: null, csrf: "synthetic" },
+      { id: previousId, deleteFiles: "true", csrf: "synthetic" },
+      { id: previousId, deleteFiles: "true", csrf: "synthetic" },
+    ]);
+    assert.deepEqual(evidence.writes, []);
+    assert.deepEqual(evidence.unexpected, []);
+  }
+  console.log("Studio desktop and mobile: accessible confirmation, record-only deletion, conflict and queued purge");
   for (const [viewport, shape] of [
     [viewports[0], "landscape"],
     [viewports[1], "portrait"],
@@ -408,6 +618,7 @@ try {
     );
     await page(() => window.__imageStudio.acknowledge());
     await waitFor(() => document.querySelector(".image-studio-generation-frame h2")?.textContent === "排队中");
+    assert.deepEqual(await waitingMotion(), ["image-studio-scan"], "Queued batches keep one waiting animation");
     const showThumbnail = holdMedia(`${syntheticMedia}${shape}-103/thumbnail`);
     const showOriginal = holdMedia(`${syntheticMedia}${shape}-103/content`);
     await page(() => window.__imageStudio.finishNextOutput());
@@ -416,11 +627,10 @@ try {
       await page(() => document.querySelector(".image-studio-gallery-summary").textContent),
       /已出图 1 \/ 4/,
     );
-    assert.equal(
-      await page(
-        () => getComputedStyle(document.querySelector(".image-studio-generation-frame"), "::before").animationName,
-      ),
-      "none",
+    assert.deepEqual(
+      await waitingMotion(),
+      [],
+      "The viewfinder stops scanning as soon as an archived image is loading",
     );
     assert.equal(await page(() => document.querySelector(".image-studio-image-button").matches("[inert]")), true);
     await capture(`studio-${shape}-waiting.png`);
@@ -438,8 +648,23 @@ try {
     await capture(`studio-${shape}-thumbnail.png`);
     showOriginal();
     await imageReady(1);
+    if (viewport.width > 900) {
+      await click(".image-studio-image-button");
+      await waitFor(() => document.querySelector(".media-preview-position")?.innerText === "04 / 04");
+      assert.equal(await page(() => !!document.querySelector(".yarl__navigation_prev")), false);
+    }
     await page(() => window.__imageStudio.finishNextOutput());
     await imageReady(2);
+    if (viewport.width > 900) {
+      await waitFor(() => !!document.querySelector('.yarl__navigation_prev[aria-disabled="false"]'));
+      assert.equal(await page(() => document.querySelector(".media-preview-position").innerText), "04 / 04");
+      await click(".yarl__navigation_prev");
+      await waitFor(() => document.querySelector(".media-preview-position")?.innerText === "03 / 04");
+      await click(".yarl__navigation_next");
+      await waitFor(() => document.querySelector(".media-preview-position")?.innerText === "04 / 04");
+      await key("Escape", "Escape", 27);
+      await waitFor(() => !document.querySelector(".yarl__root"));
+    }
     await chooseBatch("synthetic-previous-batch");
     await imageReady(1);
     await chooseBatch("5ba708e3-0000-4000-8000-000000000001");
@@ -465,6 +690,41 @@ try {
   );
   assert.equal((await page(() => window.__imageStudio.evidence())).writes.length, 1);
   console.log("Studio cached media: receipt with result reveals once without another media request");
+  await cdp("Network.enable");
+  await cdp("Network.setCacheDisabled", { cacheDisabled: true });
+  const savedPreviewPaths = ["content", "thumbnail"].map(kind => `${syntheticMedia}portrait-0/${kind}`);
+  for (const path of savedPreviewPaths) unavailableMedia.add(path);
+  await navigate("portrait", "zh", "ok=1");
+  await observeReveal();
+  await waitFor(() => !!document.querySelector(".image-studio-reload-preview"));
+  assert.match(await page(() => document.querySelector(".image-studio-gallery-summary").innerText), /已出图 1 \/ 1/);
+  for (const path of savedPreviewPaths) unavailableMedia.delete(path);
+  await click(".image-studio-reload-preview");
+  await imageReady(1);
+  assert.deepEqual(await page(() => window.__studioReveal.animations), []);
+  assert.equal((await page(() => window.__imageStudio.evidence())).writes.length, 0);
+
+  const failedFirstPaths = ["content", "thumbnail"].map(kind => `${syntheticMedia}landscape-103/${kind}`);
+  for (const path of failedFirstPaths) unavailableMedia.add(path);
+  await navigate("feedback", "zh", "ok=1&revealShape=landscape");
+  await imageReady(4);
+  await observeReveal();
+  await click(".image-studio-restore");
+  await click(".image-studio-generate");
+  await waitFor(() => document.querySelector(".image-studio-generation-frame h2")?.textContent === "正在提交生图请求");
+  await page(() => window.__imageStudio.acknowledge());
+  await waitFor(() => document.querySelector(".image-studio-generation-frame h2")?.textContent === "排队中");
+  await page(() => window.__imageStudio.finishNextOutput());
+  await waitFor(() => !!document.querySelector(".image-studio-reload-preview"));
+  assert.deepEqual(await page(() => window.__studioReveal.animations), []);
+  for (const path of failedFirstPaths) unavailableMedia.delete(path);
+  await click(".image-studio-reload-preview");
+  await waitFor(() => window.__studioReveal.animations.length === 2);
+  await imageReady(1);
+  assert.equal(await page(() => document.querySelector(".image-studio-photo-index").innerText), "04 / 04");
+  assert.equal((await page(() => window.__imageStudio.evidence())).writes.length, 1);
+  await cdp("Network.setCacheDisabled", { cacheDisabled: false });
+  console.log("Studio recovery: asset-only reload for historical and first previews without a new command");
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1487, height: 1058, deviceScaleFactor: 1, mobile: false });
   await navigate("polling");
   await imageReady(3);
@@ -489,6 +749,36 @@ try {
   assert.equal(await page(() => document.querySelector("textarea").value), editedPrompt);
   assert.equal((await page(() => window.__imageStudio.evidence())).writes.length, 0);
   await cdp("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });
+  await navigate("grid", "zh", "ok=1");
+  await imageReady(4);
+  await click('.image-studio-variant[data-version-id="synthetic-version-2"]');
+  await waitFor(() => document.querySelector(".image-studio-photo-index").innerText === "03 / 04");
+  await click(".image-studio-image-button");
+  await waitFor(() => document.querySelector(".yarl__root")?.innerText.includes("03 / 04"));
+  await click('.yarl__root button[aria-label="上一张图片"]');
+  await waitFor(() => document.querySelector(".yarl__root")?.innerText.includes("02 / 04"));
+  await waitFor(
+    () =>
+      document.querySelector('.yarl__slide_current img[src*="synthetic-studio-square-1/content"]')?.naturalWidth > 0,
+  );
+  await capture("studio-mobile-batch-preview.png");
+  await key("Escape", "Escape", 27);
+  await waitFor(() => !document.querySelector(".yarl__root"));
+  await waitFor(() => document.querySelector(".image-studio-photo-index").innerText === "02 / 04");
+
+  await chooseBatch("synthetic-saved-batch");
+  await waitFor(() => document.querySelector(".image-studio-history-prompt [role=status]")?.textContent.includes("#"));
+  await chooseBatch("synthetic-pending-batch");
+  await waitFor(() => !document.querySelector(".image-studio-image-button"));
+  await click(".image-studio-restore-history-prompt");
+  await waitFor(() => !document.querySelector(".image-studio-undo-history-prompt"));
+  assert.match(await page(() => document.querySelector("textarea").value), /^清晨海边的小屋/);
+  assert.equal(
+    await page(() => document.querySelector('.image-studio-parameter [role="combobox"][aria-label="数量"]').innerText),
+    "4 张",
+  );
+  assert.equal((await page(() => window.__imageStudio.evidence())).writes.length, 0);
+  console.log("Studio mobile: readable parameters, original-source full restore, and enlarged variant navigation");
   await navigate("grid", "zh", "ok=1");
   await imageReady(4);
   await click("textarea");

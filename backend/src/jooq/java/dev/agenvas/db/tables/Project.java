@@ -31,6 +31,7 @@ import dev.agenvas.db.tables.SkillInstallOperation.SkillInstallOperationPath;
 import dev.agenvas.db.tables.Storyboard.StoryboardPath;
 import dev.agenvas.db.tables.Task.TaskPath;
 import dev.agenvas.db.tables.ThirdPartyPromptImport.ThirdPartyPromptImportPath;
+import dev.agenvas.db.tables.VideoStudioGeneration.VideoStudioGenerationPath;
 import dev.agenvas.db.tables.records.ProjectRecord;
 
 import java.time.OffsetDateTime;
@@ -143,9 +144,9 @@ public class Project extends TableImpl<ProjectRecord> {
 
     /**
      * The column <code>public.project.purpose</code>. 权限与存储作用域用途：CANVAS
-     * 为用户项目，IMAGE_STUDIO 为独立生图工作台内部作用域
+     * 为用户项目，IMAGE_STUDIO 和 VIDEO_STUDIO 为独立工作台内部作用域
      */
-    public final TableField<ProjectRecord, String> PURPOSE = createField(DSL.name("purpose"), SQLDataType.VARCHAR(32).nullable(false).defaultValue(DSL.field(DSL.raw("'CANVAS'::character varying"), SQLDataType.VARCHAR)), this, "权限与存储作用域用途：CANVAS 为用户项目，IMAGE_STUDIO 为独立生图工作台内部作用域");
+    public final TableField<ProjectRecord, String> PURPOSE = createField(DSL.name("purpose"), SQLDataType.VARCHAR(32).nullable(false).defaultValue(DSL.field(DSL.raw("'CANVAS'::character varying"), SQLDataType.VARCHAR)), this, "权限与存储作用域用途：CANVAS 为用户项目，IMAGE_STUDIO 和 VIDEO_STUDIO 为独立工作台内部作用域");
 
     private Project(Name alias, Table<ProjectRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -216,12 +217,17 @@ public class Project extends TableImpl<ProjectRecord> {
 
     @Override
     public List<Index> getIndexes() {
-        return Arrays.asList(Indexes.IX_PROJECT_OWNER_CREATED, Indexes.UQ_PROJECT_IMAGE_STUDIO_OWNER);
+        return Arrays.asList(Indexes.IX_PROJECT_OWNER_CREATED, Indexes.UQ_PROJECT_IMAGE_STUDIO_OWNER, Indexes.UQ_PROJECT_VIDEO_STUDIO_OWNER);
     }
 
     @Override
     public UniqueKey<ProjectRecord> getPrimaryKey() {
         return Keys.PROJECT_PKEY;
+    }
+
+    @Override
+    public List<UniqueKey<ProjectRecord>> getUniqueKeys() {
+        return Arrays.asList(Keys.UQ_PROJECT_OWNER_PURPOSE_IDENTITY);
     }
 
     @Override
@@ -460,6 +466,19 @@ public class Project extends TableImpl<ProjectRecord> {
         return _task;
     }
 
+    private transient VideoStudioGenerationPath _videoStudioGeneration;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.video_studio_generation</code> table
+     */
+    public VideoStudioGenerationPath videoStudioGeneration() {
+        if (_videoStudioGeneration == null)
+            _videoStudioGeneration = new VideoStudioGenerationPath(this, null, Keys.VIDEO_STUDIO_GENERATION__FK_VIDEO_STUDIO_GENERATION_PROJECT.getInverseKey());
+
+        return _videoStudioGeneration;
+    }
+
     private transient MediaTemplateImportCommandPath _mediaTemplateImportCommand;
 
     /**
@@ -544,7 +563,7 @@ public class Project extends TableImpl<ProjectRecord> {
             Internal.createCheck(this, DSL.name("ck_project_archive_time"), "(((((status)::text = 'ACTIVE'::text) AND (archived_at IS NULL)) OR (((status)::text = ANY ((ARRAY['ARCHIVED'::character varying, 'DELETED'::character varying])::text[])) AND (archived_at IS NOT NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_project_aspect_ratio"), "(((aspect_ratio)::text = ANY ((ARRAY['LANDSCAPE_16_9'::character varying, 'PORTRAIT_9_16'::character varying, 'SQUARE_1_1'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_project_name_non_blank"), "((btrim((name)::text) <> ''::text))", true),
-            Internal.createCheck(this, DSL.name("ck_project_purpose"), "(((purpose)::text = ANY ((ARRAY['CANVAS'::character varying, 'IMAGE_STUDIO'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("ck_project_purpose"), "(((purpose)::text = ANY ((ARRAY['CANVAS'::character varying, 'IMAGE_STUDIO'::character varying, 'VIDEO_STUDIO'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_project_status"), "(((status)::text = ANY ((ARRAY['ACTIVE'::character varying, 'ARCHIVED'::character varying, 'DELETED'::character varying])::text[])))", true)
         );
     }

@@ -508,6 +508,14 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
 
     /** 仅用服务端生成的项目和素材 ID 构造从不复用的图片文件键。 */
     public StoredImage storeImage(UUID projectId, UUID assetId, InputStream source) {
+        return storeImage(projectId, assetId, source, false);
+    }
+
+    public StoredImage storeStaticImage(UUID projectId, UUID assetId, InputStream source) {
+        return storeImage(projectId, assetId, source, true);
+    }
+
+    private StoredImage storeImage(UUID projectId, UUID assetId, InputStream source, boolean staticOnly) {
         Path temporary = null;
         Path thumbnailTemporary = null;
         try {
@@ -515,7 +523,7 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
             temporary = Files.createTempFile(directory, ".ingest-", ".tmp");
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             long size = copyBounded(source, temporary, digest, MAX_IMAGE_BYTES);
-            ImageDetails details = inspectImage(temporary);
+            ImageDetails details = inspectImage(temporary, staticOnly);
             thumbnailTemporary = Files.createTempFile(directory, ".thumb-", ".tmp");
             writeThumbnail(details.decoded(), thumbnailTemporary);
             String key = projectId + "/" + assetId + details.extension();
@@ -752,6 +760,10 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
 
     /** Identify actual raster encoding; GIF validates every frame and retains the animation bytes. */
     private ImageDetails inspectImage(Path file) throws IOException {
+        return inspectImage(file, false);
+    }
+
+    private ImageDetails inspectImage(Path file, boolean staticOnly) throws IOException {
         try (ImageInputStream input = ImageIO.createImageInputStream(file.toFile())) {
             if (input == null) {
                 throw invalid(ApiMessage.of("api.local-asset-storage.unable-to-decode-picture"), "ASSET_INVALID_IMAGE");
@@ -765,6 +777,10 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
             ImageReader reader = readers.next();
             try {
                 String format = reader.getFormatName().toLowerCase(java.util.Locale.ROOT);
+                if (staticOnly) {
+                    requireStaticImage(input, format);
+                    input.seek(0);
+                }
                 if (format.equals("gif")) {
                     try (var channel = Files.newByteChannel(file)) {
                         channel.position(Files.size(file) - 1);
@@ -811,6 +827,40 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
                 reader.dispose();
             }
         }
+    }
+
+    private void requireStaticImage(ImageInputStream input, String format) throws IOException {
+        boolean animated = switch (format) {
+            case "gif" -> true;
+            case "png" -> {
+                // APNG's animation control chunk must precede the first image-data chunk.
+                input.seek(8);
+                boolean animation = false;
+                while (true) {
+                    long size = input.readUnsignedInt();
+                    int type = input.readInt();
+                    if (type == 0x6163544c) { // acTL
+                        animation = true;
+                        break;
+                    }
+                    if (type == 0x49444154 || type == 0x49454e44) // IDAT / IEND
+                        break;
+                    input.seek(input.getStreamPosition() + size + 4); // payload and CRC
+                }
+                yield animation;
+            }
+            case "webp" -> {
+                // Animated WebP requires VP8X as the first RIFF chunk and its animation bit.
+                input.seek(12);
+                if (input.readInt() != 0x56503858) // VP8X
+                    yield false;
+                input.seek(20);
+                yield (input.readUnsignedByte() & 2) != 0;
+            }
+            default -> false;
+        };
+        if (animated)
+            throw invalid(ApiMessage.of("api.asset.static-image-required"), "ASSET_ANIMATED_FRAME");
     }
 
     /** Decode all frames for validation, while preserving the original animation bytes for storage. */

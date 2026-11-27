@@ -11,9 +11,14 @@ import uuid
 DEPLOY = Path(__file__).resolve().parent
 MIB = 1024 * 1024
 UPLOAD_LIMITS = {
-    "/api/v1/library/uploads": 50,
+    "/api/v1/library/uploads": 500,
     "/api/v1/character-library/media/uploads": 50,
     "/api/v1/media-templates/images": 20,
+    "/api/v1/image-studio/references": 20,
+    "/api/v1/video-studio/frames": 20,
+    "/api/v1/video-studio/references/IMAGE": 20,
+    "/api/v1/video-studio/references/AUDIO": 50,
+    "/api/v1/video-studio/references/VIDEO": 500,
     "/api/v1/settings/media-styles/11111111-1111-4111-8111-111111111111/thumbnail": 5,
 }
 PREFIX = (b'--probe\r\nContent-Disposition: form-data; name="file"; filename="synthetic.bin"\r\n'
@@ -104,7 +109,8 @@ class NginxUploadTest(unittest.TestCase):
             with self.subTest(path=path), closing(HTTPConnection("127.0.0.1", self.port, timeout=5)) as connection:
                 self.assertEqual(self.send_headers(connection, path, mibs * MIB + len(PREFIX) + len(SUFFIX)), 100)
         for path, mibs in {**{path: limit + 1 for path, limit in uploads.items()},
-                           "/api/v1/library/entries": 1, "/mcp": 2}.items():
+                           "/api/v1/library/entries": 1, "/api/v1/video-studio/generations": 1,
+                           "/api/v1/video-studio/references/OTHER": 1, "/mcp": 2}.items():
             with self.subTest(path=path), closing(HTTPConnection("127.0.0.1", self.port, timeout=5)) as connection:
                 self.assertEqual(self.send_headers(connection, path, mibs * MIB + 1), 413)
 

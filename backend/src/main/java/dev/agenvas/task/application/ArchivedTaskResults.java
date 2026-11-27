@@ -13,11 +13,12 @@ public record ArchivedTaskResults(Identity primary, List<Identity> additional, b
 
     /** Keep validated UUID text in its original case for exact historical comparisons and wire projections. */
     public record Identity(String artifactId, String artifactVersionId, String canvasItemId, boolean hasCanvasItemId,
-            Integer ordinal, Boolean selected) {
+            Integer ordinal, Boolean selected, String kind) {
         private static Identity read(JsonNode node) {
             return new Identity(uuid(node, "artifactId"), uuid(node, "artifactVersionId"), uuid(node, "canvasItemId"),
                     node.has("canvasItemId"), node.path("ordinal").isInt() ? node.path("ordinal").intValue() : null,
-                    node.path("selected").isBoolean() ? node.path("selected").booleanValue() : null);
+                    node.path("selected").isBoolean() ? node.path("selected").booleanValue() : null,
+                    node.path("kind").asText(null));
         }
 
         private static String uuid(JsonNode node, String field) {

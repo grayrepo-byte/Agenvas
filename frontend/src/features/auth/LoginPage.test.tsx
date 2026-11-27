@@ -26,6 +26,9 @@ describe("LoginPage", () => {
     );
     const client = createQueryClient();
     useCanvasStore.getState().setTextGenerationPrompt("prior-session:canvas", "上个会话的提示词");
+    useCanvasStore
+      .getState()
+      .setMediaRunIntent("prior-session:canvas:artifact", { key: "old-attempt", expectedDraftVersion: 1 });
     render(
       <QueryClientProvider client={client}>
         <MemoryRouter initialEntries={["/login"]}>
@@ -43,9 +46,11 @@ describe("LoginPage", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("登录名或密码不正确");
     expect(password).toHaveValue("password-12345");
     expect(useCanvasStore.getState().textGenerationDrafts["prior-session:canvas"]).toBeDefined();
+    expect(useCanvasStore.getState().mediaRunIntents["prior-session:canvas:artifact"]?.key).toBe("old-attempt");
     await user.click(screen.getByRole("button", { name: "登录" }));
     expect(await screen.findByText("项目首页")).toBeInTheDocument();
     expect(useCanvasStore.getState().textGenerationDrafts).toEqual({});
+    expect(useCanvasStore.getState().mediaRunIntents).toEqual({});
     expect(client.getQueryData(["auth", "me"])).toEqual({ id: "admin", loginName: "admin", role: "ADMIN" });
     expect(submitted).toEqual([
       { loginName: "admin", password: "password-12345" },

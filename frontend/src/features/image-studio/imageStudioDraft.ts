@@ -6,7 +6,7 @@ export type StudioReference = Pick<ImageStudioReference, "versionId"> &
 export type StudioCommand = { key: string; request: CreateImageStudioBatch };
 export type StudioDraft = {
   prompt: string;
-  promptBeforeHistory: string | null;
+  historyPrompt: { previousPrompt: string; sourceBatchId: string; sourceDeleted?: boolean } | null;
   capabilityId: string | null;
   capabilityVersion: number | null;
   parameters: ImageStudioParameters;
@@ -19,7 +19,7 @@ export type StudioDraft = {
 };
 const emptyDraft = (): StudioDraft => ({
   prompt: "",
-  promptBeforeHistory: null,
+  historyPrompt: null,
   capabilityId: null,
   capabilityVersion: null,
   parameters: {},
@@ -33,17 +33,20 @@ const emptyDraft = (): StudioDraft => ({
 const EMPTY_DRAFT = emptyDraft();
 type DraftStore = {
   owners: Record<string, StudioDraft>;
+  /** Discards responses started before sign-out, including when the same owner signs in again. */
+  session: number;
   update: (ownerId: string, update: Partial<StudioDraft>) => void;
   clear: () => void;
 };
 /** Unsaved text and unresolved acceptance stay owner scoped in memory; the database owns history. */
 export const useImageStudioDraftStore = create<DraftStore>(set => ({
   owners: {},
+  session: 0,
   update: (ownerId, update) =>
     set(state => ({
       owners: { ...state.owners, [ownerId]: { ...(state.owners[ownerId] ?? emptyDraft()), ...update } },
     })),
-  clear: () => set({ owners: {} }),
+  clear: () => set(state => ({ owners: {}, session: state.session + 1 })),
 }));
 export function useImageStudioDraft(ownerId: string) {
   return useImageStudioDraftStore(state => state.owners[ownerId] ?? EMPTY_DRAFT);

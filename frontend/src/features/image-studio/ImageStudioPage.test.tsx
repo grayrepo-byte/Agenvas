@@ -5,6 +5,8 @@ import { http, HttpResponse } from "msw";
 import { beforeEach, expect, it, vi } from "vitest";
 import { MemoryRouter, Routes, Route } from "react-router";
 import { createQueryClient } from "../../app/queryClient";
+import type { CreateImageStudioBatch } from "../../shared/api/imageStudio";
+import { t } from "../../shared/i18n";
 import { server } from "../../test/server";
 import { ImageStudioPage } from "./ImageStudioPage";
 import { useImageStudioDraftStore } from "./imageStudioDraft";
@@ -29,7 +31,7 @@ const request = {
   prompt: "清晨的海边小屋",
   parameters: { aspectRatio: "16:9", resolution: "2K", quality: "high", generationCount: 2 },
   referenceVersionIds: ["reference-version"],
-};
+} satisfies CreateImageStudioBatch;
 const result = {
   artifactId: "result-artifact",
   artifactVersionId: "result-version",
@@ -205,6 +207,14 @@ it.each(["original", "thumbnail", "neither"] as const)(
         fireEvent.load(thumb);
         expect(stage.getByRole("button", { name: "选择变体 1" })).toHaveAttribute("aria-pressed", "true");
         expect(stage.getByText("原图暂不可用")).toBeVisible();
+        const thumbnailUrl = thumb.getAttribute("src");
+        await user.click(stage.getByRole("button", { name: t("imageStudio.reloadPreview") }));
+        const retried = stage.getByRole("img", { name: "生成图片 1" });
+        expect(retried).toHaveAttribute("src", expect.stringContaining("/result-asset/content?previewRetry="));
+        expect(thumb).toHaveAttribute("src", thumbnailUrl);
+        expect(retried.parentElement?.style.backgroundImage).toContain(thumbnailUrl);
+        fireEvent.load(retried);
+        expect(stage.queryByText("原图暂不可用")).not.toBeInTheDocument();
       } else {
         fireEvent.error(thumb);
         expect(stage.getByRole("heading", { name: "预览暂不可用" })).toBeVisible();
@@ -298,12 +308,90 @@ it("keeps a pending submission visible after leaving the route and coming back",
     firstVisit.unmount();
     show("/image-studio", client);
     expect(await screen.findByRole("heading", { name: "正在提交生图请求" })).toBeVisible();
-    expect(screen.queryByRole("button", { name: "重试受理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "核对原请求" })).not.toBeInTheDocument();
   } finally {
     release();
   }
   expect(await screen.findByRole("link", { name: "下载图片 1" })).toBeVisible();
   expect(writes).toBe(1);
+});
+
+it.each([200, 422])("isolates a late HTTP %i receipt from a new session's pending command", async status => {
+  let finishFirst!: () => void;
+  let finishSecond!: () => void;
+  const first = new Promise<void>(resolve => {
+    finishFirst = resolve;
+  });
+  const second = new Promise<void>(resolve => {
+    finishSecond = resolve;
+  });
+  server.use(
+    http.post("/api/v1/image-studio/batches", async ({ request }) => {
+      const body = (await request.json()) as CreateImageStudioBatch;
+      const original = body.prompt === "first session";
+      await (original ? first : second);
+      return original && status === 422
+        ? HttpResponse.json({ message: "Rejected" }, { status })
+        : HttpResponse.json({ ...history, id: original ? "original" : "new", prompt: body.prompt });
+    }),
+    http.get("/api/v1/image-studio/batches/:id", () => HttpResponse.json(history)),
+  );
+  const user = userEvent.setup();
+  const oldClient = createQueryClient();
+  const visit = show("/image-studio", oldClient);
+  await user.type(await screen.findByRole("textbox", { name: "提示词" }), "first session");
+  await user.click(screen.getByRole("button", { name: "生成图片" }));
+  await screen.findByRole("heading", { name: "正在提交生图请求" });
+  visit.unmount();
+  useImageStudioDraftStore.getState().clear();
+  show();
+  try {
+    await user.type(await screen.findByRole("textbox", { name: "提示词" }), "second session");
+    await user.click(screen.getByRole("button", { name: "生成图片" }));
+    await screen.findByRole("heading", { name: "正在提交生图请求" });
+    finishFirst();
+    await waitFor(() => expect(oldClient.isMutating()).toBe(0));
+    const current = useImageStudioDraftStore.getState().owners["studio-owner"];
+    expect(current?.command?.request.prompt).toBe("second session");
+    expect(current?.awaitingHistory).toEqual([]);
+  } finally {
+    finishFirst();
+    finishSecond();
+  }
+});
+
+it("keeps a reference upload pending across navigation and discards it after sign-out", async () => {
+  let release!: () => void;
+  const receipt = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  const previousFetch = globalThis.fetch;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    if (input !== "/api/v1/image-studio/references") return previousFetch(input, init);
+    await receipt;
+    return HttpResponse.json(history.references[0]);
+  });
+  const client = createQueryClient();
+  const user = userEvent.setup();
+  const first = show("/image-studio", client);
+  await user.type(await screen.findByRole("textbox", { name: "提示词" }), "include this reference");
+  await user.upload(screen.getByLabelText("上传参考图"), new File(["x"], "reference.png", { type: "image/png" }));
+  await waitFor(() => expect(client.isMutating()).toBe(1));
+  first.unmount();
+  const revisit = show("/image-studio", client);
+  try {
+    expect(await screen.findByRole("button", { name: "生成图片" })).toBeDisabled();
+    expect(screen.getByLabelText("上传参考图")).toBeDisabled();
+    revisit.unmount();
+    useImageStudioDraftStore.getState().clear();
+    show();
+    await user.type(await screen.findByRole("textbox", { name: "提示词" }), "fresh draft");
+    release();
+    await waitFor(() => expect(client.isMutating()).toBe(0));
+    expect(useImageStudioDraftStore.getState().owners["studio-owner"]?.references).toEqual([]);
+  } finally {
+    release();
+  }
 });
 
 it("opens from main navigation without reading or choosing a canvas", async () => {
@@ -397,7 +485,7 @@ it("retries uncertain acceptance with its frozen request and idempotency key", a
   await user.click(screen.getByRole("button", { name: "生成图片" }));
   const unconfirmed = await screen.findByRole("heading", { name: "尚未确认受理" });
   expect(unconfirmed.closest(".image-studio-generation-frame")).toHaveAttribute("data-tone", "warning");
-  await user.click(await screen.findByRole("button", { name: "重试受理" }));
+  await user.click(await screen.findByRole("button", { name: "核对原请求" }));
   await screen.findByRole("link", { name: "下载图片 1" });
   expect(accepted).toHaveLength(2);
   expect(accepted[1]).toEqual(accepted[0]);
@@ -511,7 +599,7 @@ it("unlocks the preserved draft after a definitive validation rejection", async 
   await screen.findByText("当前参考图不受支持");
   expect(prompt).not.toBeDisabled();
   expect(prompt).toHaveValue("待修正的草稿");
-  expect(screen.queryByRole("button", { name: "重试受理" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "核对原请求" })).not.toBeInTheDocument();
 });
 
 it("requires explicit confirmation when historical capability settings changed", async () => {
@@ -622,7 +710,9 @@ it.each([
   );
   show();
   expect(await screen.findByText(title)).toBeInTheDocument();
-  expect(screen.getByText(errorCode)).toBeInTheDocument();
+  expect(screen.getByText(errorCode)).not.toBeVisible();
+  await userEvent.setup().click(screen.getByText(t("imageStudio.errorDetails")));
+  expect(screen.getByText(errorCode)).toBeVisible();
 });
 
 it("restores only the prompt on an explicit history image selection and still browses imageless batches", async () => {
@@ -684,6 +774,10 @@ it("undoes only the latest effective history prompt replacement, including an em
   await user.click(first);
   await user.click(screen.getByRole("button", { name: "撤销回填" }));
   expect(prompt).toHaveValue("");
+  fireEvent.change(prompt, { target: { value: history.prompt } });
+  await user.click(first);
+  expect(screen.queryByRole("button", { name: "撤销回填" })).not.toBeInTheDocument();
+  fireEvent.change(prompt, { target: { value: "" } });
   expect(screen.queryByRole("button", { name: "撤销回填" })).not.toBeInTheDocument();
   await user.click(first);
   await user.click(second);
@@ -736,26 +830,310 @@ it("changes capability-specific advanced parameters on demand and retains the dr
   expect(screen.getByRole("checkbox", { name: "透明背景" })).toBeChecked();
 });
 
-it("fills the prompt, closes the narrow history drawer and returns focus after selection", async () => {
+it("explains prompt-only loading in narrow history and restores the source after browsing and remounting", async () => {
   vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {} }));
   try {
+    const other = {
+      ...history,
+      id: "other-batch",
+      prompt: "还没有图片的批次",
+      parameters: capability.defaultParameters,
+      references: [],
+      tasks: [{ id: "failed", status: "FAILED", version: 1, results: [], errorCode: null }],
+    };
+    const draftModel = { ...capability, capabilityId: "draft-capability", capabilityVersion: 7, name: "当前草稿模型" };
+    const generate = vi.fn();
     server.use(
-      http.get("/api/v1/image-studio/batches", () => HttpResponse.json({ items: [history], nextCursor: null })),
+      http.get("/api/v1/image-studio/context", () =>
+        HttpResponse.json({
+          projectId: "studio-scope",
+          defaultCapabilityId: draftModel.capabilityId,
+          capabilities: [draftModel, capability],
+        }),
+      ),
+      http.get("/api/v1/image-studio/batches", () => HttpResponse.json({ items: [history, other], nextCursor: null })),
+      http.get(`/api/v1/image-studio/batches/${history.id}`, () => HttpResponse.json(history)),
+      http.post("/api/v1/image-studio/batches", () => {
+        generate();
+        return HttpResponse.json(history);
+      }),
     );
-    show();
+    const firstMount = show();
     const user = userEvent.setup();
-    const prompt = await screen.findByRole("textbox", { name: "提示词" });
+    const composer = within(await screen.findByRole("form", { name: t("imageStudio.parameters") }));
+    const prompt = composer.getByRole("textbox", { name: "提示词" });
+    const cue = composer.getByRole("status", { name: "" });
+    const explanation = t("imageStudio.historyPromptLoaded", { "0": "#HISTORIC" });
+    const restoreLabel = t("imageStudio.restoreHistoryPromptSettings");
+    expect(cue).toBeEmptyDOMElement();
+    expect(prompt).toHaveAttribute("rows", "3");
     await user.type(prompt, "手机草稿");
     const toggle = screen.getByRole("button", { name: "展开历史记录" });
-    await user.click(toggle);
-    const drawer = screen.getByRole("dialog", { name: "历史记录" });
-    await user.click(within(drawer).getByRole("button", { name: /清晨的海边小屋/ }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "历史记录" })).not.toBeInTheDocument());
+    async function selectBatch(name: RegExp) {
+      await user.click(toggle);
+      const drawer = screen.getByRole("dialog", { name: "历史记录" });
+      await user.click(await within(drawer).findByRole("button", { name }));
+      await waitFor(() => expect(drawer).not.toBeInTheDocument());
+      expect(toggle).toHaveFocus();
+    }
+    await selectBatch(/清晨的海边小屋/);
     expect(prompt).toHaveValue(history.prompt);
-    expect(toggle).toHaveFocus();
+    expect(cue).toHaveTextContent(explanation);
+    for (const key of ["model", "ratio", "resolution", "quality", "count"] as const) {
+      const name = t(`imageStudio.${key}`);
+      const control = composer.getByRole("combobox", { name });
+      const label = composer.getByText(name, { selector: ".image-studio-setting-label" });
+      expect(label).toHaveAttribute("for", control.id);
+    }
+    expect(composer.getByRole("combobox", { name: t("imageStudio.model") })).toHaveTextContent(draftModel.name);
+    expect(composer.getByRole("combobox", { name: "分辨率" })).toHaveTextContent("1K");
+    expect(composer.getByRole("combobox", { name: "质量" })).toHaveTextContent(t("imageStudio.quality.medium"));
+    expect(composer.getByRole("button", { name: "生成图片" })).toBeEnabled();
+    expect(composer.queryByRole("button", { name: "移除参考图 1" })).not.toBeInTheDocument();
+    await user.click(composer.getByRole("button", { name: "撤销回填" }));
+    expect(prompt).toHaveValue("手机草稿");
+    expect(cue).toBeEmptyDOMElement();
+
+    await selectBatch(/清晨的海边小屋/);
+    await selectBatch(/还没有图片的批次/);
+    expect(cue).toHaveTextContent(explanation);
+    firstMount.unmount();
+    show();
+    const remounted = within(await screen.findByRole("form", { name: t("imageStudio.parameters") }));
+    expect(remounted.getByRole("status", { name: "" })).toHaveTextContent(explanation);
+    expect(await screen.findByRole("button", { name: "回填参数" })).toBeVisible();
+    await user.click(remounted.getByRole("button", { name: restoreLabel }));
+    expect(await remounted.findByRole("button", { name: "移除参考图 1" })).toBeVisible();
+    expect(remounted.getByRole("combobox", { name: "分辨率" })).toHaveTextContent("2K");
+    expect(remounted.getByRole("combobox", { name: t("imageStudio.model") })).toHaveTextContent(capability.name);
+    expect(remounted.getByRole("combobox", { name: "质量" })).toHaveTextContent(t("imageStudio.quality.high"));
+    expect(remounted.getByRole("combobox", { name: "数量" })).toHaveTextContent("2 张");
+    expect(remounted.getByRole("textbox", { name: "提示词" })).toHaveValue(history.prompt);
+    expect(remounted.getByRole("status", { name: "" })).toBeEmptyDOMElement();
+    expect(remounted.queryByRole("button", { name: "撤销回填" })).not.toBeInTheDocument();
+    expect(generate).not.toHaveBeenCalled();
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+it("does not restore full settings from a cached history row that no longer exists", async () => {
+  server.use(
+    http.get("/api/v1/image-studio/batches", () => HttpResponse.json({ items: [history], nextCursor: null })),
+    http.get(`/api/v1/image-studio/batches/${history.id}`, () => new HttpResponse(null, { status: 404 })),
+  );
+  show();
+  const user = userEvent.setup();
+  const prompt = await screen.findByRole("textbox", { name: "提示词" });
+  await user.type(prompt, "之前的草稿");
+  await user.click(await screen.findByRole("button", { name: /清晨的海边小屋/ }));
+  const restore = screen.getByRole("button", { name: t("imageStudio.restoreHistoryPromptSettings") });
+  await user.click(restore);
+  await waitFor(() => expect(restore).not.toBeInTheDocument());
+  expect(prompt).toHaveValue(history.prompt);
+  expect(screen.getByRole("combobox", { name: "分辨率" })).toHaveTextContent("1K");
+  await user.click(screen.getByRole("button", { name: "撤销回填" }));
+  expect(prompt).toHaveValue("之前的草稿");
+});
+
+it.each(["desktop", "mobile"] as const)("deletes only the history record by default on %s", async viewport => {
+  if (viewport === "mobile")
+    vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {} }));
+  try {
+    const other = { ...history, id: "other-batch", prompt: "保留的批次" };
+    const deletions: (string | null)[] = [];
+    const generate = vi.fn();
+    const draft = {
+      prompt: "保留编辑中的草稿",
+      historyPrompt: { previousPrompt: "之前的草稿", sourceBatchId: history.id },
+      capabilityId: capability.capabilityId,
+      capabilityVersion: capability.capabilityVersion,
+      parameters: request.parameters,
+      references: history.references,
+    };
+    useImageStudioDraftStore.getState().update("studio-owner", { ...draft, selectedBatchId: history.id });
+    server.use(
+      http.get("/api/v1/image-studio/batches", () =>
+        HttpResponse.json({ items: deletions.length ? [other] : [history, other], nextCursor: null }),
+      ),
+      http.get(`/api/v1/image-studio/batches/${history.id}`, () => HttpResponse.json(history)),
+      http.get(`/api/v1/image-studio/batches/${other.id}`, () => HttpResponse.json(other)),
+      http.delete(`/api/v1/image-studio/batches/${history.id}`, ({ request }) => {
+        deletions.push(new URL(request.url).searchParams.get("deleteFiles"));
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.post("/api/v1/image-studio/batches", () => {
+        generate();
+        return HttpResponse.json(history);
+      }),
+    );
+    show();
+    const user = userEvent.setup();
+    if (viewport === "mobile") await user.click(await screen.findByRole("button", { name: "展开历史记录" }));
+    const row = await screen.findByRole("button", { name: /清晨的海边小屋/ });
+    const trigger = screen.getByRole("button", { name: "从历史记录中删除#HISTORIC" });
+    expect(row).toHaveAttribute("aria-pressed", "true");
+    row.focus();
+    await user.tab();
+    expect(trigger).toHaveFocus();
+    await user.keyboard("{Enter}");
+    const dialog = await screen.findByRole("dialog", { name: "从历史记录中删除#HISTORIC？" });
+    const cancel = within(dialog).getByRole("button", { name: "取消" });
+    const option = within(dialog).getByRole("checkbox", { name: "同时永久删除生成图片的原图和缩略图" });
+    expect(cancel).toHaveFocus();
+    expect(option).not.toBeChecked();
+    await user.click(option);
+    await user.click(cancel);
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(deletions).toEqual([]);
+    expect(row).toHaveAttribute("aria-pressed", "true");
+
+    await user.keyboard("{Enter}");
+    expect(within(screen.getByRole("dialog", { name: /删除#HISTORIC/ })).getByRole("checkbox")).not.toBeChecked();
+    await user.click(screen.getByRole("button", { name: "删除批次" }));
+    expect(await screen.findByText("已从历史记录中移除批次，生成文件已保留。")).toBeInTheDocument();
+    const remaining = screen.getByRole("button", { name: /保留的批次/ });
+    expect(remaining).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(remaining).toHaveFocus());
+    expect(row).not.toBeInTheDocument();
+    expect(deletions).toEqual([null]);
+    expect(useImageStudioDraftStore.getState().owners["studio-owner"]).toMatchObject({
+      ...draft,
+      historyPrompt: { ...draft.historyPrompt, sourceDeleted: true },
+    });
+    if (viewport === "mobile") await user.keyboard("{Escape}");
+    expect(
+      screen.queryByRole("button", { name: t("imageStudio.restoreHistoryPromptSettings") }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "撤销回填" }));
+    expect(screen.getByRole("textbox", { name: "提示词" })).toHaveValue(draft.historyPrompt.previousPrompt);
+    expect(generate).not.toHaveBeenCalled();
+  } finally {
+    if (viewport === "mobile") vi.unstubAllGlobals();
+  }
+});
+
+it("keeps a rejected permanent deletion intact and queues cleanup only on explicit success", async () => {
+  const deletions: (string | null)[] = [];
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  server.use(
+    http.get("/api/v1/image-studio/batches", () =>
+      HttpResponse.json({ items: deletions.length === 2 ? [] : [history], nextCursor: null }),
+    ),
+    http.delete(`/api/v1/image-studio/batches/${history.id}`, async ({ request }) => {
+      deletions.push(new URL(request.url).searchParams.get("deleteFiles"));
+      if (deletions.length === 1) {
+        await pending;
+        return HttpResponse.json(
+          { code: "STUDIO_BATCH_REFERENCED", detail: "此生成图片仍被另一批次引用。", retryable: false },
+          { status: 409, headers: { "Content-Type": "application/problem+json" } },
+        );
+      }
+      return new HttpResponse(null, { status: 202 });
+    }),
+  );
+  show();
+  const user = userEvent.setup();
+  const row = await screen.findByRole("button", { name: /清晨的海边小屋/ });
+  await user.click(screen.getByRole("button", { name: "从历史记录中删除#HISTORIC" }));
+  const dialog = await screen.findByRole("dialog", { name: /删除#HISTORIC/ });
+  const option = within(dialog).getByRole("checkbox");
+  const confirm = within(dialog).getByRole("button", { name: "删除批次" });
+  try {
+    await user.click(option);
+    await user.click(confirm);
+    await waitFor(() => expect(confirm).toBeDisabled());
+    fireEvent.click(confirm);
+    await user.keyboard("{Escape}");
+    expect(dialog).toBeInTheDocument();
+    expect(option).toBeDisabled();
+    expect(row).toBeInTheDocument();
+    await waitFor(() => expect(deletions).toEqual(["true"]));
+  } finally {
+    release();
+  }
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent("此生成图片仍被另一批次引用。");
+  expect(option).toBeChecked();
+  expect(row).toHaveAttribute("aria-pressed", "true");
+  expect(screen.queryByText("已从历史记录中移除批次，文件永久删除已排队。")).not.toBeInTheDocument();
+  await user.click(confirm);
+  expect(await screen.findByText("已从历史记录中移除批次，文件永久删除已排队。")).toBeInTheDocument();
+  expect(screen.getByText("生成记录会保存在这里")).toBeInTheDocument();
+  expect(row).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole("button", { name: "收起历史记录" })).toHaveFocus());
+  expect(deletions).toEqual(["true", "true"]);
+});
+
+it("cancels stale reads without replacing an unrelated in-flight submission", async () => {
+  const accepted = { ...history, id: "accepted-after-delete", prompt: "提交中的新批次" };
+  let releaseReads!: () => void;
+  let releaseReceipt!: () => void;
+  const stale = new Promise<void>(resolve => {
+    releaseReads = resolve;
+  });
+  const receipt = new Promise<void>(resolve => {
+    releaseReceipt = resolve;
+  });
+  const inFlight: AbortSignal[] = [];
+  let holdReads = false;
+  let deleted = false;
+  let submitted = false;
+  server.use(
+    http.get("/api/v1/image-studio/batches", async ({ request }) => {
+      if (holdReads && !deleted) {
+        inFlight.push(request.signal);
+        await stale;
+        return HttpResponse.json({ items: [history], nextCursor: null });
+      }
+      return HttpResponse.json({ items: submitted ? [accepted] : deleted ? [] : [history], nextCursor: null });
+    }),
+    http.get(`/api/v1/image-studio/batches/${history.id}`, async ({ request }) => {
+      inFlight.push(request.signal);
+      await stale;
+      return HttpResponse.json(history);
+    }),
+    http.delete(`/api/v1/image-studio/batches/${history.id}`, () => {
+      deleted = true;
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.post("/api/v1/image-studio/batches", async () => {
+      await receipt;
+      submitted = true;
+      return HttpResponse.json(accepted);
+    }),
+  );
+  const client = createQueryClient();
+  const historyKey = ["image-studio", "studio-owner", "history"];
+  const detailKey = ["image-studio", "studio-owner", "batch", history.id];
+  show("/image-studio", client);
+  const user = userEvent.setup();
+  await screen.findByRole("button", { name: /清晨的海边小屋/ });
+  const prompt = screen.getByRole("textbox", { name: "提示词" });
+  await user.type(prompt, accepted.prompt);
+  try {
+    await user.click(screen.getByRole("button", { name: "生成图片" }));
+    await screen.findByRole("heading", { name: "正在提交生图请求" });
+    holdReads = true;
+    void client.refetchQueries({ queryKey: historyKey, exact: true });
+    void client.refetchQueries({ queryKey: detailKey, exact: true });
+    await waitFor(() => expect(inFlight).toHaveLength(2));
+    await user.click(screen.getByRole("button", { name: "从历史记录中删除#HISTORIC" }));
+    await user.click(await screen.findByRole("button", { name: "删除批次" }));
+    await screen.findByText("已从历史记录中移除批次，生成文件已保留。");
+    expect(inFlight.every(signal => signal.aborted)).toBe(true);
+    expect(client.getQueryState(detailKey)).toBeUndefined();
+    expect(screen.getByRole("heading", { name: "正在提交生图请求" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /清晨的海边小屋/ })).not.toBeInTheDocument();
+  } finally {
+    releaseReads();
+    releaseReceipt();
+  }
+  expect(await screen.findByRole("button", { name: /提交中的新批次/ })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.queryByRole("button", { name: /清晨的海边小屋/ })).not.toBeInTheDocument();
+  expect(prompt).toHaveValue(accepted.prompt);
 });
 
 it.each(["/image-studio/", "/IMAGE-STUDIO"])(
@@ -865,6 +1243,7 @@ it("keeps the active version after a reordered detail read and across history br
   await user.click(historyItem());
   expect(screen.getByRole("button", { name: "选择变体 4" })).toHaveAttribute("aria-pressed", "true");
   expect(prompt).toHaveValue(history.prompt);
+  await user.click(screen.getByText(t("imageStudio.errorDetails")));
   expect(screen.getByText("PROVIDER_REJECTED")).toBeVisible();
   await user.click(screen.getByRole("button", { name: "回填参数" }));
   expect(prompt).toHaveValue(history.prompt);

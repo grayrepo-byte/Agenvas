@@ -137,6 +137,19 @@ public class Asset extends TableImpl<AssetRecord> {
      */
     public final TableField<AssetRecord, Integer> DURATION_MS = createField(DSL.name("duration_ms"), SQLDataType.INTEGER, this, "Verified MP4 duration at archive time; null only for images or pre-V35 video assets.");
 
+    /**
+     * The column <code>public.asset.studio_purge_after</code>. Studio result
+     * file removal intent and earliest cleanup attempt; non-null denies serving
+     * the file
+     */
+    public final TableField<AssetRecord, OffsetDateTime> STUDIO_PURGE_AFTER = createField(DSL.name("studio_purge_after"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "Studio result file removal intent and earliest cleanup attempt; non-null denies serving the file");
+
+    /**
+     * The column <code>public.asset.studio_purged_at</code>. Confirmed removal
+     * of the original and thumbnail; asset metadata remains for audit
+     */
+    public final TableField<AssetRecord, OffsetDateTime> STUDIO_PURGED_AT = createField(DSL.name("studio_purged_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "Confirmed removal of the original and thumbnail; asset metadata remains for audit");
+
     private Asset(Name alias, Table<AssetRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -206,7 +219,7 @@ public class Asset extends TableImpl<AssetRecord> {
 
     @Override
     public List<Index> getIndexes() {
-        return Arrays.asList(Indexes.IX_ASSET_PROJECT_CREATED);
+        return Arrays.asList(Indexes.IX_ASSET_PROJECT_CREATED, Indexes.IX_ASSET_STUDIO_PURGE_DUE);
     }
 
     @Override
@@ -244,6 +257,7 @@ public class Asset extends TableImpl<AssetRecord> {
             Internal.createCheck(this, DSL.name("ck_asset_media_duration"), "(((((media_kind)::text = 'IMAGE'::text) AND (duration_ms IS NULL)) OR (((media_kind)::text = 'VIDEO'::text) AND ((duration_ms IS NULL) OR ((duration_ms >= 1) AND (duration_ms <= 600000)))) OR (((media_kind)::text = 'AUDIO'::text) AND (duration_ms IS NOT NULL) AND ((duration_ms >= 1) AND (duration_ms <= 600000)) AND (width IS NULL) AND (height IS NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_asset_sha256"), "((sha256 ~ '^[0-9a-f]{64}$'::text))", true),
             Internal.createCheck(this, DSL.name("ck_asset_size"), "((byte_size > 0))", true),
+            Internal.createCheck(this, DSL.name("ck_asset_studio_purge"), "((((studio_purge_after IS NULL) OR ((media_kind)::text = 'IMAGE'::text)) AND ((studio_purged_at IS NULL) OR (studio_purge_after IS NOT NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_asset_thumbnail_complete"), "((((thumbnail_key IS NULL) AND (thumbnail_byte_size IS NULL) AND (thumbnail_sha256 IS NULL)) OR ((thumbnail_key IS NOT NULL) AND (thumbnail_byte_size > 0) AND (thumbnail_sha256 ~ '^[0-9a-f]{64}$'::text))))", true)
         );
     }

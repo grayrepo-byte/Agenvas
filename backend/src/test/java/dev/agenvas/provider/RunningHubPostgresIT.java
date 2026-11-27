@@ -10,6 +10,7 @@ import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.asset.application.AssetService;
+import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.audit.application.CallLogService;
 import dev.agenvas.bootstrap.AgenvasApplication;
@@ -26,6 +27,7 @@ import dev.agenvas.provider.domain.ProviderFailure;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.task.application.TaskService;
+import dev.agenvas.task.application.VideoStudioService;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.application.UsageService;
 import java.awt.image.BufferedImage;
@@ -103,6 +105,8 @@ class RunningHubPostgresIT {
     DirectMediaTaskService direct;
     @Autowired
     TaskService tasks;
+    @Autowired
+    VideoStudioService videoStudio;
     @Autowired
     dev.agenvas.task.application.ManualUnknownRetryService retries;
     @Autowired
@@ -1005,6 +1009,99 @@ class RunningHubPostgresIT {
                         .update();
             } finally {
                 Files.deleteIfExists(file);
+            }
+        }
+    }
+
+    @Test
+    void studioReusesPublishedVideoWorkflowWithPrivateMixedSlotsAndArchivesOnly() throws Exception {
+        try (var provider = new Fake(2, false, false)) {
+            var connection = catalog.createConnection("studio-workflow", "Synthetic shared RunningHub", "RUNNINGHUB",
+                    provider.origin(), "synthetic-studio-key");
+            var settings = mapper.readTree("""
+                {"runningHub":{"schemaVersion":1,"protocolVersion":"V2","targetType":"WORKFLOW","targetId":"123",
+                  "fields":[
+                    {"key":"still","label":"Still","type":"IMAGE","required":true,"nodeId":"1","fieldName":"image"},
+                    {"key":"clip","label":"Clip","type":"VIDEO","required":true,"nodeId":"2","fieldName":"video"},
+                    {"key":"voice","label":"Voice","type":"AUDIO","required":true,"nodeId":"3","fieldName":"audio"},
+                    {"key":"speed","label":"Speed","type":"INTEGER","defaultValue":2,"nodeId":"4","fieldName":"speed"}],
+                  "outputs":[{"nodeId":"9","kind":"VIDEO","primary":true,"maxCount":1},
+                             {"nodeId":"9","kind":"AUDIO","primary":false,"maxCount":1}]}}
+                """);
+            var published = catalog.publishCapability(connection.id(), "Existing canvas video", "RUNNINGHUB_VIDEO",
+                    settings);
+            var displayed = videoStudio.context(owner).capabilities().stream()
+                    .filter(capability -> capability.capabilityId().equals(published.id())).findFirst().orElseThrow();
+            assertThat(displayed.capabilityVersion()).isEqualTo(published.currentVersion());
+            assertThat(displayed.connectionName()).isEqualTo(connection.name());
+            assertThat(displayed.modes()).containsExactly(MediaDraft.VideoInputMode.GENERAL_REFERENCE);
+            assertThat(displayed.defaultDurationSeconds()).isNull();
+            assertThat(displayed.fields()).allMatch(field -> "PARAMETER".equals(field.path("source").asText())
+                    && !field.has("nodeId") && !field.has("fieldName"));
+            var scratchVideo = Files.createTempFile(storage, "studio-input-", ".mp4");
+            var scratchAudio = Files.createTempFile(storage, "studio-input-", ".wav");
+            try {
+                mediaTools.ffmpeg(List.of("-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=64x64:r=12", "-t",
+                        "3", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", "-y", scratchVideo.toString()));
+                mediaTools.ffmpeg(List.of("-v", "error", "-f", "lavfi", "-i", "sine=frequency=440", "-t",
+                        "3", "-y", scratchAudio.toString()));
+                provider.firstType = "mp4";
+                provider.firstBytes = Files.readAllBytes(scratchVideo);
+                provider.secondType = "wav";
+                provider.secondBytes = Files.readAllBytes(scratchAudio);
+                var image = videoStudio.uploadReference(owner, Asset.MediaKind.IMAGE,
+                        new ByteArrayInputStream(provider.imageBytes));
+                VideoStudioService.ReferenceAsset video;
+                VideoStudioService.ReferenceAsset audio;
+                try (var videoBytes = Files.newInputStream(scratchVideo);
+                        var audioBytes = Files.newInputStream(scratchAudio)) {
+                    video = videoStudio.uploadReference(owner, Asset.MediaKind.VIDEO, videoBytes);
+                    audio = videoStudio.uploadReference(owner, Asset.MediaKind.AUDIO, audioBytes);
+                }
+                var refs = List.of(
+                        new VideoStudioService.ReferenceInput(image.kind(), image.versionId(), "still"),
+                        new VideoStudioService.ReferenceInput(video.kind(), video.versionId(), "clip"),
+                        new VideoStudioService.ReferenceInput(audio.kind(), audio.versionId(), "voice"));
+                var command = new VideoStudioService.Command(published.id(), published.currentVersion(), "",
+                        MediaDraft.VideoInputMode.GENERAL_REFERENCE, null, null, null, null, refs, null,
+                        mapper.createObjectNode().put("speed", 3));
+                var missingVoice = new VideoStudioService.Command(published.id(), published.currentVersion(), "",
+                        MediaDraft.VideoInputMode.GENERAL_REFERENCE, null, null, null, null, refs.subList(0, 2), null,
+                        mapper.createObjectNode());
+                assertThatThrownBy(() -> videoStudio.accept(owner, missingVoice, "missing-studio-slot"))
+                        .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+                assertThat(provider.submits).hasValue(0);
+                var accepted = videoStudio.accept(owner, command, "mixed-studio-slots");
+                assertThat(videoStudio.accept(owner, command, "mixed-studio-slots")).isEqualTo(accepted);
+                assertThat(accepted.references()).extracting(VideoStudioService.ReferenceAsset::versionId)
+                        .containsExactly(image.versionId(), video.versionId(), audio.versionId());
+                assertThat(accepted.dynamicValues().propertyNames()).containsExactly("speed");
+                assertThat(accepted.durationSeconds()).isNull();
+                assertThat(worker.submitOnce("rh-studio")).isEqualTo(1);
+                assertThat(provider.uploads).hasValue(3);
+                assertThat(mapper.readTree(provider.submitted.get()).path("nodeInfoList").valueStream()
+                        .map(node -> node.path("fieldName").asText()).toList())
+                        .containsExactlyInAnyOrder("image", "video", "audio", "speed");
+                due(accepted.task().id());
+                assertThat(worker.pollOnce("rh-studio-poll")).isEqualTo(1);
+                var archived = videoStudio.get(owner, accepted.id());
+                assertThat(archived.task().status()).isEqualTo(Task.Status.SUCCEEDED);
+                assertThat(archived.task().results()).hasSize(1);
+                var companion = tasks.get(owner, archived.projectId(), accepted.task().id()).output()
+                        .path("additionalResults").get(0);
+                assertThat(companion.path("kind").asText()).isEqualTo("AUDIO");
+                var companionVersion = artifacts.requireMediaVersionForTask(owner, archived.projectId(),
+                        UUID.fromString(companion.path("artifactVersionId").asText()), Artifact.Kind.AUDIO);
+                assertThat(assets.get(owner, archived.projectId(),
+                        UUID.fromString(companionVersion.content().path("assetId").asText())).asset().contentType())
+                        .isEqualTo("audio/wav");
+                assertThat(provider.queryTaskId).hasValue("original-task");
+                assertThat(provider.submits).hasValue(1);
+                assertThat(jdbc.sql("select count(*) from canvas_item where project_id=?").param(archived.projectId())
+                        .query(Integer.class).single()).isZero();
+            } finally {
+                Files.deleteIfExists(scratchVideo);
+                Files.deleteIfExists(scratchAudio);
             }
         }
     }

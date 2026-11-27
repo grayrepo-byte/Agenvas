@@ -9,7 +9,9 @@ import copy
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
+import tarfile
 import tempfile
 import unittest
 import uuid
@@ -139,6 +141,47 @@ class InstallationSecretsTest(unittest.TestCase):
         checks += 'if touch /run/agenvas/credentials/installation/.readonly-probe 2>/dev/null; then echo "Secret mount accepted a write" >&2; exit 1; fi'
         run_command(command + ["--entrypoint", "/bin/sh", self.image,
             "/server-entrypoint.sh", "/bin/sh", "-ec", checks])
+
+    def test_backup_templates_match_manifest_revision_and_exclude_local_overrides(self):
+        root = Path(self.directory.name)
+        repo = root / "repository"
+        (repo / "deploy").mkdir(parents=True)
+        (repo / "configs").mkdir()
+        script = repo / "deploy/backup-compose.sh"
+        shutil.copy(REPO / "deploy/backup-compose.sh", script)
+        for name in ("docker-compose.yml", "docker-compose.local.yml", "configs/template.yaml"):
+            (repo / name).write_text("published template")
+        git = ["git", "-C", str(repo)]
+        run_command(git + ["init", "--quiet"])
+        run_command(git + ["add", "."])
+        run_command(git + ["-c", "user.name=Fixture", "-c", "user.email=test@example.invalid",
+                           "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Synthetic templates"])
+        revision = run_command(git + ["rev-parse", "HEAD"]).stdout.strip()
+        (repo / "docker-compose.yml").write_text("local override")
+        (repo / "deploy/private-config.yml").write_text("local-only configuration")
+
+        config = json.loads(self.config_file.read_text())
+        config["volumes"]["asset-data"] = {}
+        for service in ("web", "server"):
+            config["services"][service] = {
+                "image": self.image, "entrypoint": ["sleep", "infinity"], "volumes": ["asset-data:/assets"],
+            }
+        self.config_file.write_text(json.dumps(config))
+        self.start_database()
+        run_command(self.compose + ["exec", "-T", "server", "sh", "-ec", "echo synthetic-media > /assets/sample"])
+        output = root / "backup"
+        run_command(["bash", str(script), self.project, str(output), str(self.config_file)])
+        self.assertEqual(json.loads((output / "manifest.json").read_text())["gitRevision"], revision)
+        assets = output / "assets.tgz"
+        self.assertEqual(assets.stat().st_uid, os.getuid())
+        self.assertEqual(assets.stat().st_mode & 0o777, 0o600)
+        with tarfile.open(assets) as archive:
+            self.assertEqual(archive.extractfile("./sample").read(), b"synthetic-media\n")
+        with tarfile.open(output / "repository-templates.tgz") as templates:
+            self.assertEqual(templates.extractfile("docker-compose.yml").read(), b"published template")
+            self.assertNotIn("deploy/private-config.yml", templates.getnames())
+        running = run_command(self.compose + ["ps", "--status", "running", "--services"]).stdout.splitlines()
+        self.assertEqual(set(running), {"web", "server", "postgres"})
 
     def test_independent_installations_generate_different_secrets(self):
         self.generate()

@@ -19,6 +19,7 @@ export function LoginPage() {
     mutationFn: login,
     onSuccess: user => {
       useCanvasStore.getState().clearTextGenerationDrafts();
+      useCanvasStore.getState().clearMediaRunIntents();
       queryClient.setQueryData(["auth", "me"], user);
       navigate("/projects", { replace: true });
     },

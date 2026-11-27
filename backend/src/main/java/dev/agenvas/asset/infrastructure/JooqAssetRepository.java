@@ -5,11 +5,13 @@ import static dev.agenvas.db.Tables.ASSET;
 import dev.agenvas.asset.application.AssetRepository;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.db.tables.records.AssetRecord;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.Optional;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.springframework.stereotype.Repository;
 
@@ -63,6 +65,63 @@ public class JooqAssetRepository implements AssetRepository {
                 .fetchOptional(this::map);
     }
 
+    @Override
+    public Optional<Asset> findAvailable(UUID projectId, UUID assetId) {
+        return dsl.selectFrom(ASSET)
+                .where(ASSET.PROJECT_ID.eq(projectId), ASSET.ID.eq(assetId),
+                        ASSET.STUDIO_PURGE_AFTER.isNull())
+                .fetchOptional(this::map);
+    }
+
+    @Override
+    public boolean queueStudioImagePurge(UUID projectId, UUID assetId, Instant purgeAfter) {
+        return dsl.update(ASSET)
+                .set(ASSET.STUDIO_PURGE_AFTER, utc(purgeAfter))
+                .where(ASSET.PROJECT_ID.eq(projectId), ASSET.ID.eq(assetId),
+                        ASSET.MEDIA_KIND.eq(Asset.MediaKind.IMAGE.name()), ASSET.STUDIO_PURGE_AFTER.isNull())
+                .execute() == 1;
+    }
+
+    @Override
+    public List<Asset> findDueStudioImagePurges(Instant now, int limit) {
+        return dsl.selectFrom(ASSET)
+                .where(due(now))
+                .orderBy(ASSET.STUDIO_PURGE_AFTER, ASSET.ID)
+                .limit(limit)
+                .fetch(this::map);
+    }
+
+    @Override
+    public boolean isStudioImagePurgeDue(UUID projectId, UUID assetId, Instant now) {
+        return dsl.fetchExists(dsl.selectOne().from(ASSET)
+                .where(ASSET.PROJECT_ID.eq(projectId), ASSET.ID.eq(assetId), due(now)));
+    }
+
+    @Override
+    public void markStudioImagePurged(UUID projectId, UUID assetId, Instant now) {
+        dsl.update(ASSET)
+                .set(ASSET.STUDIO_PURGED_AT, utc(now))
+                .where(ASSET.PROJECT_ID.eq(projectId), ASSET.ID.eq(assetId),
+                        ASSET.STUDIO_PURGE_AFTER.isNotNull(), ASSET.STUDIO_PURGED_AT.isNull())
+                .execute();
+    }
+
+    @Override
+    public void delayStudioImagePurge(UUID projectId, UUID assetId, Instant now, Instant retryAt) {
+        dsl.update(ASSET)
+                .set(ASSET.STUDIO_PURGE_AFTER, utc(retryAt))
+                .where(ASSET.PROJECT_ID.eq(projectId), ASSET.ID.eq(assetId), due(now))
+                .execute();
+    }
+
+    private static Condition due(Instant now) {
+        return ASSET.STUDIO_PURGED_AT.isNull().and(ASSET.STUDIO_PURGE_AFTER.le(utc(now)));
+    }
+
+    private static OffsetDateTime utc(Instant time) {
+        return OffsetDateTime.ofInstant(time, ZoneOffset.UTC);
+    }
+
     /** 稳定排序读取项目素材，供画布快照生成使用。
      * @param projectId 要读取的项目
      * @return 按创建时间和 UUID 排序的素材记录
@@ -71,6 +130,7 @@ public class JooqAssetRepository implements AssetRepository {
     public List<Asset> listProjectAssets(UUID projectId) {
         return dsl.selectFrom(ASSET)
                 .where(ASSET.PROJECT_ID.eq(projectId))
+                .and(ASSET.STUDIO_PURGE_AFTER.isNull())
                 .orderBy(ASSET.CREATED_AT, ASSET.ID)
                 .fetch(this::map);
     }

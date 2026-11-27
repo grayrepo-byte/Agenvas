@@ -375,7 +375,7 @@ export type SetMediaDefaultRequest = components["schemas"]["SetMediaDefaultReque
 type CsrfToken = components["schemas"]["CsrfToken"];
 type Problem = components["schemas"]["Problem"];
 
-let csrfToken: CsrfToken | undefined;
+let csrfToken: Promise<CsrfToken> | undefined;
 
 const MEBIBYTE = 1024 * 1024;
 const MAX_IMAGE_UPLOAD_BYTES = 20 * MEBIBYTE;
@@ -579,6 +579,8 @@ export async function setupAdministrator(input: SetupRequest): Promise<CurrentUs
 
 /** Opens a server-side login session and discards the pre-login CSRF token. */
 export async function login(input: LoginRequest): Promise<CurrentUser> {
+  // A second tab may have rotated the cookie since this tab last made a write.
+  csrfToken = undefined;
   const user = await writeJson<CurrentUser>("/api/v1/auth/login", {
     method: "POST",
     body: JSON.stringify(input),
@@ -1434,7 +1436,8 @@ async function write(
   init: RequestInit,
   failureMessage = t("api.errors.requestFailed"),
 ): Promise<Response> {
-  const token = await getCsrfToken();
+  const tokenRequest = getCsrfToken();
+  const token = await tokenRequest;
   const response = await apiFetch(path, {
     ...init,
     credentials: "same-origin",
@@ -1447,16 +1450,26 @@ async function write(
     },
   });
   if (!response.ok) {
+    // Only the next explicit action uses a refreshed token. Never replay a write here.
+    if (
+      (response.status === HTTP_STATUS.FORBIDDEN || response.status === HTTP_STATUS.UNAUTHORIZED) &&
+      csrfToken === tokenRequest
+    )
+      csrfToken = undefined;
     throw await apiError(response, failureMessage);
   }
   return response;
 }
 
-async function getCsrfToken(): Promise<CsrfToken> {
-  if (csrfToken) {
-    return csrfToken;
+function getCsrfToken(): Promise<CsrfToken> {
+  if (!csrfToken) {
+    // Share the initial read so concurrent writes cannot race to install different cookies.
+    const pending = readJson<CsrfToken>("/api/v1/auth/csrf", t("api.errors.sessionUnavailable"));
+    csrfToken = pending;
+    void pending.catch(() => {
+      if (csrfToken === pending) csrfToken = undefined;
+    });
   }
-  csrfToken = await readJson<CsrfToken>("/api/v1/auth/csrf", t("api.errors.sessionUnavailable"));
   return csrfToken;
 }
 

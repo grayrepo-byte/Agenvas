@@ -135,6 +135,40 @@ public class ImageStudioBatchRecord extends UpdatableRecordImpl<ImageStudioBatch
         return (OffsetDateTime) get(6);
     }
 
+    /**
+     * Setter for <code>public.image_studio_batch.deleted_at</code>. Removal
+     * time from Studio history; immutable command and task membership are
+     * retained
+     */
+    public void setDeletedAt(OffsetDateTime value) {
+        set(7, value);
+    }
+
+    /**
+     * Getter for <code>public.image_studio_batch.deleted_at</code>. Removal
+     * time from Studio history; immutable command and task membership are
+     * retained
+     */
+    public OffsetDateTime getDeletedAt() {
+        return (OffsetDateTime) get(7);
+    }
+
+    /**
+     * Setter for <code>public.image_studio_batch.delete_files</code>. Explicit
+     * original and thumbnail purge choice; repeated deletion must match
+     */
+    public void setDeleteFiles(Boolean value) {
+        set(8, value);
+    }
+
+    /**
+     * Getter for <code>public.image_studio_batch.delete_files</code>. Explicit
+     * original and thumbnail purge choice; repeated deletion must match
+     */
+    public Boolean getDeleteFiles() {
+        return (Boolean) get(8);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -158,7 +192,7 @@ public class ImageStudioBatchRecord extends UpdatableRecordImpl<ImageStudioBatch
     /**
      * Create a detached, initialised ImageStudioBatchRecord
      */
-    public ImageStudioBatchRecord(UUID id, UUID ownerId, UUID projectId, String commandKey, String requestHash, JSONB requestJson, OffsetDateTime createdAt) {
+    public ImageStudioBatchRecord(UUID id, UUID ownerId, UUID projectId, String commandKey, String requestHash, JSONB requestJson, OffsetDateTime createdAt, OffsetDateTime deletedAt, Boolean deleteFiles) {
         super(ImageStudioBatch.IMAGE_STUDIO_BATCH);
 
         setId(id);
@@ -168,6 +202,8 @@ public class ImageStudioBatchRecord extends UpdatableRecordImpl<ImageStudioBatch
         setRequestHash(requestHash);
         setRequestJson(requestJson);
         setCreatedAt(createdAt);
+        setDeletedAt(deletedAt);
+        setDeleteFiles(deleteFiles);
         resetChangedOnNotNull();
     }
 }

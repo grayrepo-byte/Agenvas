@@ -1,6 +1,7 @@
 package dev.agenvas.project.application;
 
 import dev.agenvas.project.domain.Project;
+import dev.agenvas.project.domain.ProjectPurpose;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -14,10 +15,10 @@ public interface ProjectRepository {
     void create(Project project);
 
     /** Atomically insert or return the one private Studio storage scope belonging to this owner. */
-    Project ensureImageStudioScope(Project candidate);
+    Project ensureStudioScope(Project candidate, ProjectPurpose purpose);
 
-    /** Public canvas management must not expose an internal media storage scope. */
-    boolean isCanvasScope(UUID ownerId, UUID projectId);
+    /** Checks the owner's project purpose without creating a scope. */
+    boolean isScope(UUID ownerId, UUID projectId, ProjectPurpose purpose);
 
     /** 在指定所有者范围内读取项目。 */
     Optional<Project> findById(UUID ownerId, UUID projectId);

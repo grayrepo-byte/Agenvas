@@ -114,6 +114,7 @@ import dev.agenvas.db.tables.ThirdPartyPromptSource;
 import dev.agenvas.db.tables.ThirdPartyPromptSyncSettings;
 import dev.agenvas.db.tables.ToolExecution;
 import dev.agenvas.db.tables.UsageLedger;
+import dev.agenvas.db.tables.VideoStudioGeneration;
 
 
 /**
@@ -695,4 +696,10 @@ public class Tables {
      * 使用量预留、结算与释放账本，记录估算或实际费用来源
      */
     public static final UsageLedger USAGE_LEDGER = UsageLedger.USAGE_LEDGER;
+
+    /**
+     * Owned video Studio command and frozen request, independent of canvas
+     * nodes; Task owns execution status
+     */
+    public static final VideoStudioGeneration VIDEO_STUDIO_GENERATION = VideoStudioGeneration.VIDEO_STUDIO_GENERATION;
 }

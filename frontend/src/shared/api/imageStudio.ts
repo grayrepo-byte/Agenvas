@@ -1,5 +1,5 @@
 import type { components } from "./schema";
-import { ApiError, readJson, writeJson } from "./client";
+import { ApiError, readJson, writeEmpty, writeJson } from "./client";
 import { t } from "../i18n";
 
 export type ImageStudioContext = components["schemas"]["ImageStudioContext"];
@@ -19,13 +19,20 @@ const ACTIVE_STATUSES = new Set<ImageStudioTask["status"]>(["READY", "RUNNING", 
 export function getImageStudioContext(): Promise<ImageStudioContext> {
   return readJson(`${BASE}/context`, t("imageStudio.loadFailed"));
 }
-export function listImageStudioBatches(before?: string): Promise<components["schemas"]["ImageStudioBatchPage"]> {
+export function listImageStudioBatches(
+  before?: string,
+  signal?: AbortSignal,
+): Promise<components["schemas"]["ImageStudioBatchPage"]> {
   const query = new URLSearchParams({ limit: "20" });
   if (before) query.set("before", before);
-  return readJson(`${BASE}/batches?${query}`, t("imageStudio.historyFailed"));
+  return readJson(`${BASE}/batches?${query}`, t("imageStudio.historyFailed"), signal);
 }
-export function getImageStudioBatch(id: string): Promise<ImageStudioBatch> {
-  return readJson(`${BASE}/batches/${encodeURIComponent(id)}`, t("imageStudio.statusFailed"));
+export function getImageStudioBatch(id: string, signal?: AbortSignal): Promise<ImageStudioBatch> {
+  return readJson(`${BASE}/batches/${encodeURIComponent(id)}`, t("imageStudio.statusFailed"), signal);
+}
+export function deleteImageStudioBatch({ id, deleteFiles }: { id: string; deleteFiles: boolean }): Promise<void> {
+  const query = deleteFiles ? "?deleteFiles=true" : "";
+  return writeEmpty(`${BASE}/batches/${encodeURIComponent(id)}${query}`, { method: "DELETE" });
 }
 /** Retrying acceptance always uses the original immutable command and key. */
 export function createImageStudioBatch(command: {

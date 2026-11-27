@@ -156,13 +156,8 @@ public class MockVideoRenderer {
                             throw new IllegalStateException("Cannot read generated demo MP4", failure);
                         }
                     });
-            ObjectNode content = MediaResult.content(mapper, task, archived.id(),
-                    task.input().path("prompt").asText("Mock video"));
-            ObjectNode parameters = MediaResult.copyFrozenParameters(content, task);
-            parameters.put("mock", true);
-            parameters.put("displayLabel", "演示视频（非 AI 生成）");
-            parameters.put("providerRequestId", result.providerRequestId());
-            return new Submission.CompletedArtifact(content);
+            return new Submission.CompletedArtifact(
+                    resultContent(mapper, task, archived.id(), result.providerRequestId()));
         } finally {
             try {
                 Files.deleteIfExists(rendered);
@@ -170,6 +165,14 @@ public class MockVideoRenderer {
                 // Temporary output is never the durable archived Asset.
             }
         }
+    }
+
+    static ObjectNode resultContent(ObjectMapper mapper, Task task, UUID assetId, String providerRequestId) {
+        ObjectNode content = MediaResult.content(mapper, task, assetId,
+                task.input().path("prompt").asText("Mock video"));
+        MediaResult.copyFrozenParameters(content, task).put("mock", true)
+                .put("displayLabel", "演示视频（非 AI 生成）").put("providerRequestId", providerRequestId);
+        return content;
     }
 
     private String resolvedRatio(UUID ownerId, Task task) {

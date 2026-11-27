@@ -114,6 +114,7 @@ import dev.agenvas.db.tables.ThirdPartyPromptSource;
 import dev.agenvas.db.tables.ThirdPartyPromptSyncSettings;
 import dev.agenvas.db.tables.ToolExecution;
 import dev.agenvas.db.tables.UsageLedger;
+import dev.agenvas.db.tables.VideoStudioGeneration;
 import dev.agenvas.db.tables.records.AgentConversationRecord;
 import dev.agenvas.db.tables.records.AgentInstanceRecord;
 import dev.agenvas.db.tables.records.AgentMediaApprovalRecord;
@@ -224,6 +225,7 @@ import dev.agenvas.db.tables.records.ThirdPartyPromptSourceRecord;
 import dev.agenvas.db.tables.records.ThirdPartyPromptSyncSettingsRecord;
 import dev.agenvas.db.tables.records.ToolExecutionRecord;
 import dev.agenvas.db.tables.records.UsageLedgerRecord;
+import dev.agenvas.db.tables.records.VideoStudioGenerationRecord;
 
 import org.jooq.ForeignKey;
 import org.jooq.TableField;
@@ -360,6 +362,7 @@ public class Keys {
     public static final UniqueKey<MediaTemplateImportImageRecord> MEDIA_TEMPLATE_IMPORT_IMAGE_PKEY = Internal.createUniqueKey(MediaTemplateImportImage.MEDIA_TEMPLATE_IMPORT_IMAGE, DSL.name("media_template_import_image_pkey"), new TableField[] { MediaTemplateImportImage.MEDIA_TEMPLATE_IMPORT_IMAGE.PROJECT_ID, MediaTemplateImportImage.MEDIA_TEMPLATE_IMPORT_IMAGE.VERSION_ID }, true);
     public static final UniqueKey<MediaTemplateImportSourceRecord> MEDIA_TEMPLATE_IMPORT_SOURCE_PKEY = Internal.createUniqueKey(MediaTemplateImportSource.MEDIA_TEMPLATE_IMPORT_SOURCE, DSL.name("media_template_import_source_pkey"), new TableField[] { MediaTemplateImportSource.MEDIA_TEMPLATE_IMPORT_SOURCE.COMMAND_ID, MediaTemplateImportSource.MEDIA_TEMPLATE_IMPORT_SOURCE.IMAGE_ID }, true);
     public static final UniqueKey<ProjectRecord> PROJECT_PKEY = Internal.createUniqueKey(Project.PROJECT, DSL.name("project_pkey"), new TableField[] { Project.PROJECT.ID }, true);
+    public static final UniqueKey<ProjectRecord> UQ_PROJECT_OWNER_PURPOSE_IDENTITY = Internal.createUniqueKey(Project.PROJECT, DSL.name("uq_project_owner_purpose_identity"), new TableField[] { Project.PROJECT.OWNER_ID, Project.PROJECT.PURPOSE, Project.PROJECT.ID }, true);
     public static final UniqueKey<ProjectCharacterRecord> PROJECT_CHARACTER_PKEY = Internal.createUniqueKey(ProjectCharacter.PROJECT_CHARACTER, DSL.name("project_character_pkey"), new TableField[] { ProjectCharacter.PROJECT_CHARACTER.ID }, true);
     public static final UniqueKey<ProjectCharacterRecord> UQ_PROJECT_CHARACTER_PROJECT = Internal.createUniqueKey(ProjectCharacter.PROJECT_CHARACTER, DSL.name("uq_project_character_project"), new TableField[] { ProjectCharacter.PROJECT_CHARACTER.PROJECT_ID, ProjectCharacter.PROJECT_CHARACTER.ID }, true);
     public static final UniqueKey<ProjectCharacterCommandRecord> PROJECT_CHARACTER_COMMAND_PKEY = Internal.createUniqueKey(ProjectCharacterCommand.PROJECT_CHARACTER_COMMAND, DSL.name("project_character_command_pkey"), new TableField[] { ProjectCharacterCommand.PROJECT_CHARACTER_COMMAND.PROJECT_ID, ProjectCharacterCommand.PROJECT_CHARACTER_COMMAND.COMMAND_ID }, true);
@@ -416,6 +419,9 @@ public class Keys {
     public static final UniqueKey<ToolExecutionRecord> UQ_TOOL_EXECUTION_CALL = Internal.createUniqueKey(ToolExecution.TOOL_EXECUTION, DSL.name("uq_tool_execution_call"), new TableField[] { ToolExecution.TOOL_EXECUTION.RUN_ID, ToolExecution.TOOL_EXECUTION.STEP_INDEX, ToolExecution.TOOL_EXECUTION.TOOL_CALL_ID }, true);
     public static final UniqueKey<UsageLedgerRecord> USAGE_LEDGER_OPERATION_KEY_KEY = Internal.createUniqueKey(UsageLedger.USAGE_LEDGER, DSL.name("usage_ledger_operation_key_key"), new TableField[] { UsageLedger.USAGE_LEDGER.OPERATION_KEY }, true);
     public static final UniqueKey<UsageLedgerRecord> USAGE_LEDGER_PKEY = Internal.createUniqueKey(UsageLedger.USAGE_LEDGER, DSL.name("usage_ledger_pkey"), new TableField[] { UsageLedger.USAGE_LEDGER.ID }, true);
+    public static final UniqueKey<VideoStudioGenerationRecord> UQ_VIDEO_STUDIO_GENERATION_OWNER_COMMAND = Internal.createUniqueKey(VideoStudioGeneration.VIDEO_STUDIO_GENERATION, DSL.name("uq_video_studio_generation_owner_command"), new TableField[] { VideoStudioGeneration.VIDEO_STUDIO_GENERATION.OWNER_ID, VideoStudioGeneration.VIDEO_STUDIO_GENERATION.COMMAND_KEY }, true);
+    public static final UniqueKey<VideoStudioGenerationRecord> UQ_VIDEO_STUDIO_GENERATION_TASK = Internal.createUniqueKey(VideoStudioGeneration.VIDEO_STUDIO_GENERATION, DSL.name("uq_video_studio_generation_task"), new TableField[] { VideoStudioGeneration.VIDEO_STUDIO_GENERATION.TASK_ID }, true);
+    public static final UniqueKey<VideoStudioGenerationRecord> VIDEO_STUDIO_GENERATION_PKEY = Internal.createUniqueKey(VideoStudioGeneration.VIDEO_STUDIO_GENERATION, DSL.name("video_studio_generation_pkey"), new TableField[] { VideoStudioGeneration.VIDEO_STUDIO_GENERATION.ID }, true);
 
     // -------------------------------------------------------------------------
     // FOREIGN KEY definitions
@@ -573,4 +579,6 @@ public class Keys {
     public static final ForeignKey<ThirdPartyPromptImportRecord, ProjectRecord> THIRD_PARTY_PROMPT_IMPORT__THIRD_PARTY_PROMPT_IMPORT_PROJECT_ID_FKEY = Internal.createForeignKey(ThirdPartyPromptImport.THIRD_PARTY_PROMPT_IMPORT, DSL.name("third_party_prompt_import_project_id_fkey"), new TableField[] { ThirdPartyPromptImport.THIRD_PARTY_PROMPT_IMPORT.PROJECT_ID }, Keys.PROJECT_PKEY, new TableField[] { Project.PROJECT.ID }, true);
     public static final ForeignKey<ToolExecutionRecord, AgentRunRecord> TOOL_EXECUTION__FK_TOOL_EXECUTION_RUN = Internal.createForeignKey(ToolExecution.TOOL_EXECUTION, DSL.name("fk_tool_execution_run"), new TableField[] { ToolExecution.TOOL_EXECUTION.PROJECT_ID, ToolExecution.TOOL_EXECUTION.RUN_ID }, Keys.UQ_AGENT_RUN_PROJECT_ID, new TableField[] { AgentRun.AGENT_RUN.PROJECT_ID, AgentRun.AGENT_RUN.ID }, true);
     public static final ForeignKey<ToolExecutionRecord, LlmTurnRecord> TOOL_EXECUTION__FK_TOOL_EXECUTION_TURN = Internal.createForeignKey(ToolExecution.TOOL_EXECUTION, DSL.name("fk_tool_execution_turn"), new TableField[] { ToolExecution.TOOL_EXECUTION.RUN_ID, ToolExecution.TOOL_EXECUTION.STEP_INDEX }, Keys.LLM_TURN_PKEY, new TableField[] { LlmTurn.LLM_TURN.RUN_ID, LlmTurn.LLM_TURN.STEP_INDEX }, true);
+    public static final ForeignKey<VideoStudioGenerationRecord, ProjectRecord> VIDEO_STUDIO_GENERATION__FK_VIDEO_STUDIO_GENERATION_PROJECT = Internal.createForeignKey(VideoStudioGeneration.VIDEO_STUDIO_GENERATION, DSL.name("fk_video_studio_generation_project"), new TableField[] { VideoStudioGeneration.VIDEO_STUDIO_GENERATION.OWNER_ID, VideoStudioGeneration.VIDEO_STUDIO_GENERATION.PROJECT_PURPOSE, VideoStudioGeneration.VIDEO_STUDIO_GENERATION.PROJECT_ID }, Keys.UQ_PROJECT_OWNER_PURPOSE_IDENTITY, new TableField[] { Project.PROJECT.OWNER_ID, Project.PROJECT.PURPOSE, Project.PROJECT.ID }, true);
+    public static final ForeignKey<VideoStudioGenerationRecord, TaskRecord> VIDEO_STUDIO_GENERATION__FK_VIDEO_STUDIO_GENERATION_TASK = Internal.createForeignKey(VideoStudioGeneration.VIDEO_STUDIO_GENERATION, DSL.name("fk_video_studio_generation_task"), new TableField[] { VideoStudioGeneration.VIDEO_STUDIO_GENERATION.PROJECT_ID, VideoStudioGeneration.VIDEO_STUDIO_GENERATION.TASK_ID }, Keys.UQ_TASK_PROJECT_ID, new TableField[] { Task.TASK.PROJECT_ID, Task.TASK.ID }, true);
 }

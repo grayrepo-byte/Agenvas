@@ -7225,6 +7225,205 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+    delete:
+      operationId: deleteImageStudioBatch
+      summary: 从本人工作台历史删除整批，可选永久清理该批的生成图片
+      tags: [ImageStudio]
+      parameters:
+        - name: deleteFiles
+          in: query
+          description: 默认仅移除记录。显式传 true 时清理生成原图与缩略图，不清理输入参考图。
+          schema: {type: boolean, default: false}
+      responses:
+        "202":
+          description: 已删除历史记录，永久文件清理已受理（或此前已受理）
+        "204":
+          description: 历史记录已删除，保留文件
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/video-studio/context:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+    get:
+      operationId: getVideoStudioContext
+      summary: 读取当前所有者的私有视频工作台和可用能力
+      description: 复用画布已发布且启用的视频生成能力、连接和输入约束。不要求选择项目或创建画布节点；没有兼容能力时返回空目录。
+      tags: [VideoStudio]
+      responses:
+        "200":
+          description: 工作台上下文
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VideoStudioContext"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /api/v1/video-studio/frames:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+    post:
+      operationId: uploadVideoStudioFrame
+      summary: 上传并固定私有静态帧图版本
+      description: 只接受一个实际可解码的静态图片文件（最多 20 MiB、4000 万像素），不接受动态图片、外部 URL 或跨作用域引用。不创建画布节点；在生成请求中指定首帧或尾帧角色。
+      tags: [VideoStudio]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        "201":
+          description: 当前所有者的归档帧图与固定版本
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VideoStudioFrame"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "413":
+          description: 文件超过上传大小限制
+          content:
+            application/problem+json:
+              schema: {$ref: "#/components/schemas/Problem"}
+        "415":
+          description: 请求 Content-Type 不受支持
+          content:
+            application/problem+json:
+              schema: {$ref: "#/components/schemas/Problem"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+        "503": {$ref: "#/components/responses/ObjectStorageFailure"}
+  /api/v1/video-studio/references/{kind}:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: kind
+        in: path
+        required: true
+        schema: {$ref: "#/components/schemas/VideoStudioReferenceKind"}
+    post:
+      operationId: uploadVideoStudioReference
+      summary: 上传并固定私有参考素材版本
+      description: 单文件上传，只接受实际可解码的静态图片、视频或音频。不接受外部 URL 或跨作用域引用，不创建画布节点。
+      tags: [VideoStudio]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        "201":
+          description: 当前所有者的私有参考素材及固定版本
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VideoStudioReferenceAsset"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "413":
+          description: 文件超过上传大小限制
+          content:
+            application/problem+json:
+              schema: {$ref: "#/components/schemas/Problem"}
+        "415":
+          description: 请求 Content-Type 不受支持
+          content:
+            application/problem+json:
+              schema: {$ref: "#/components/schemas/Problem"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+        "503": {$ref: "#/components/responses/ObjectStorageFailure"}
+  /api/v1/video-studio/generations:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+    post:
+      operationId: createVideoStudioGeneration
+      summary: 原子受理一次视频生成并固定输入和能力版本
+      description: |
+        不创建画布节点或 Run，也不写入生图历史。当前所有者同键同请求返回原记录，即使能力随后变化；
+        同键不同请求或新命令使用失效能力版本时返回 409。未收到受理回执时，仅用原键和原请求核对。
+        供应商受理不确定由任务 UNKNOWN 表示；与浏览器没有收到回执、任务 FAILED 或归档受阻不同。
+        查询和恢复仅处理原请求或结果，不重新调用生成。
+      tags: [VideoStudio]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 160}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateVideoStudioGeneration"}
+      responses:
+        "201":
+          description: 已受理或同键重放的生成记录，不代表视频已归档
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VideoStudioGeneration"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "415":
+          description: 请求 Content-Type 不受支持
+          content:
+            application/problem+json:
+              schema: {$ref: "#/components/schemas/Problem"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+    get:
+      operationId: listVideoStudioGenerations
+      summary: 读取当前所有者的视频生成历史
+      tags: [VideoStudio]
+      parameters:
+        - name: before
+          in: query
+          description: 上一页返回的不透明游标，固定创建时间与记录 ID。
+          schema: {type: string}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        "200":
+          description: 最新优先的历史记录及下页游标
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VideoStudioGenerationPage"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /api/v1/video-studio/generations/{generationId}:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: generationId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getVideoStudioGeneration
+      summary: 读取本人生成记录的固定设置、任务状态与私有归档
+      description: 刷新、轮询和历史回填不触发生成。只返回私有归档标识，不返回供应商 URL。
+      tags: [VideoStudio]
+      responses:
+        "200":
+          description: 生成记录
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VideoStudioGeneration"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
 components:
   securitySchemes:
     McpBearer:
@@ -7232,6 +7431,193 @@ components:
       scheme: bearer
       description: 用户级 MCP 访问令牌，仅用于明确列出的 MCP 接口。
   schemas:
+    VideoStudioMode:
+      type: string
+      enum: [TEXT, START_END, GENERAL_REFERENCE]
+    VideoStudioAspectRatio:
+      type: string
+      enum: ["16:9", "9:16", "1:1"]
+    VideoStudioContext:
+      type: object
+      additionalProperties: false
+      required: [projectId, defaultCapabilityId, capabilities]
+      properties:
+        projectId: {type: string, format: uuid, description: 仅用于私有归档访问的内部作用域}
+        defaultCapabilityId: {type: [string, "null"], format: uuid}
+        capabilities: {type: array, items: {$ref: "#/components/schemas/VideoStudioCapability"}}
+    VideoStudioCapability:
+      type: object
+      additionalProperties: false
+      required: [capabilityId, capabilityVersion, name, connectionName, adapterId, modes, defaultMode, supportsEndFrame, requiresEndFrame, minDurationSeconds, maxDurationSeconds, defaultDurationSeconds, aspectRatios, defaultAspectRatio, videoResolutions, defaultVideoResolution, referenceLimits, fields, defaultDynamicValues]
+      properties:
+        capabilityId: {type: string, format: uuid}
+        capabilityVersion: {type: integer, minimum: 1}
+        name: {type: string}
+        connectionName: {type: string}
+        adapterId: {type: string, minLength: 1}
+        modes: {type: array, minItems: 1, uniqueItems: true, items: {$ref: "#/components/schemas/VideoStudioMode"}}
+        defaultMode: {$ref: "#/components/schemas/VideoStudioMode"}
+        supportsEndFrame: {type: boolean}
+        requiresEndFrame: {type: boolean}
+        minDurationSeconds: {type: [integer, "null"], minimum: 1}
+        maxDurationSeconds: {type: [integer, "null"], minimum: 1}
+        defaultDurationSeconds: {type: [integer, "null"], minimum: 1}
+        aspectRatios: {type: array, uniqueItems: true, items: {$ref: "#/components/schemas/VideoStudioAspectRatio"}}
+        defaultAspectRatio:
+          oneOf:
+            - {$ref: "#/components/schemas/VideoStudioAspectRatio"}
+            - {type: "null"}
+        videoResolutions: {type: array, uniqueItems: true, items: {type: string}}
+        defaultVideoResolution: {type: [string, "null"]}
+        referenceLimits:
+          type: object
+          additionalProperties: false
+          required: [image, video, audio]
+          properties:
+            image: {type: integer, minimum: 0}
+            video: {type: integer, minimum: 0}
+            audio: {type: integer, minimum: 0}
+        fields:
+          description: 已发布协议的创作者字段，不含工作流图、接口地址或凭证；普通模型为 null。
+          type: [array, "null"]
+          items: {$ref: "#/components/schemas/CreatorInputField"}
+        defaultDynamicValues: {$ref: "#/components/schemas/VideoStudioDynamicValues"}
+    VideoStudioFrame:
+      type: object
+      additionalProperties: false
+      required: [artifactId, versionId, assetId, projectId, width, height]
+      properties:
+        artifactId: {type: string, format: uuid}
+        versionId: {type: string, format: uuid}
+        assetId: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        width: {type: integer, minimum: 1}
+        height: {type: integer, minimum: 1}
+    VideoStudioReferenceKind:
+      type: string
+      enum: [IMAGE, VIDEO, AUDIO]
+    VideoStudioReferenceInput:
+      type: object
+      additionalProperties: false
+      required: [kind, versionId]
+      properties:
+        kind: {$ref: "#/components/schemas/VideoStudioReferenceKind"}
+        versionId: {type: string, format: uuid}
+        fieldKey: {type: [string, "null"], pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$", description: 已发布工作流的具名素材槽；普通全能参考留空}
+    VideoStudioReferenceAsset:
+      type: object
+      additionalProperties: false
+      required: [artifactId, versionId, assetId, projectId, kind, fieldKey, width, height, durationMs, contentType]
+      properties:
+        artifactId: {type: string, format: uuid}
+        versionId: {type: string, format: uuid}
+        assetId: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        kind: {$ref: "#/components/schemas/VideoStudioReferenceKind"}
+        fieldKey: {type: [string, "null"]}
+        width: {type: [integer, "null"], minimum: 1}
+        height: {type: [integer, "null"], minimum: 1}
+        durationMs: {type: [integer, "null"], minimum: 1}
+        contentType: {type: string}
+    VideoStudioDynamicValues:
+      type: object
+      additionalProperties: {$ref: "#/components/schemas/RunningHubScalar"}
+      description: 已发布协议中可编辑的非素材参数；提示词、时长、素材版本通过各自字段提供。
+    CreateVideoStudioGeneration:
+      type: object
+      additionalProperties: false
+      required: [capabilityId, capabilityVersion, prompt, mode, durationSeconds]
+      description: TEXT 不接受素材；START_END 使用固定静态帧，尾帧按能力约束；GENERAL_REFERENCE 使用有序私有参考版本，具名工作流必须指定槽位。
+      properties:
+        capabilityId: {type: string, format: uuid}
+        capabilityVersion: {type: integer, minimum: 1}
+        prompt: {type: string, maxLength: 8000, description: 按发布的能力校验；没有必填提示词的工作流可传空字符串}
+        mode: {$ref: "#/components/schemas/VideoStudioMode"}
+        durationSeconds: {type: [integer, "null"], minimum: 1, description: 整数秒；不映射时长或由供应商决定时传 null}
+        aspectRatio:
+          type: string
+          enum: [AUTO, "16:9", "9:16", "1:1"]
+          description: 缺省使用能力默认值；AUTO 固定为 16:9，不继承画布设置。
+        startFrameVersionId: {type: [string, "null"], format: uuid, description: START_FRAME 角色}
+        endFrameVersionId: {type: [string, "null"], format: uuid, description: 可选的 END_FRAME 角色}
+        references: {type: array, maxItems: 14, items: {$ref: "#/components/schemas/VideoStudioReferenceInput"}}
+        videoResolution: {type: string, description: 普通模型在已发布档位中选择}
+        dynamicValues: {$ref: "#/components/schemas/VideoStudioDynamicValues"}
+      if:
+        properties:
+          mode: {const: START_END}
+      then:
+        required: [startFrameVersionId]
+        properties:
+          startFrameVersionId: {type: string}
+      else:
+        properties:
+          startFrameVersionId: {type: "null"}
+          endFrameVersionId: {type: "null"}
+    VideoStudioGeneration:
+      type: object
+      additionalProperties: false
+      required: [id, projectId, capabilityId, capabilityVersion, prompt, mode, durationSeconds, aspectRatio, startFrame, endFrame, references, videoResolution, dynamicValues, createdAt, task]
+      properties:
+        id: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        capabilityId: {type: string, format: uuid}
+        capabilityVersion: {type: integer, minimum: 1}
+        prompt: {type: string}
+        mode: {$ref: "#/components/schemas/VideoStudioMode"}
+        durationSeconds: {type: [integer, "null"], minimum: 1, description: 冻结的有效秒数，不是成品探测时长}
+        aspectRatio:
+          oneOf:
+            - {$ref: "#/components/schemas/VideoStudioAspectRatio"}
+            - {type: "null"}
+        videoResolution: {type: [string, "null"]}
+        dynamicValues: {$ref: "#/components/schemas/VideoStudioDynamicValues"}
+        references: {type: array, maxItems: 14, items: {$ref: "#/components/schemas/VideoStudioReferenceAsset"}}
+        startFrame:
+          oneOf:
+            - {$ref: "#/components/schemas/VideoStudioFrame"}
+            - {type: "null"}
+        endFrame:
+          oneOf:
+            - {$ref: "#/components/schemas/VideoStudioFrame"}
+            - {type: "null"}
+        createdAt: {type: string, format: date-time}
+        task: {$ref: "#/components/schemas/VideoStudioTask"}
+    VideoStudioTask:
+      type: object
+      additionalProperties: false
+      required: [id, status, version, errorCode, results]
+      properties:
+        id: {type: string, format: uuid}
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+          description: UNKNOWN 表示供应商受理不确定，BLOCKED 可表示归档受阻；两者均不表示应重新生成。
+        version: {type: integer, format: int64, minimum: 0}
+        errorCode: {type: [string, "null"]}
+        results: {type: array, items: {$ref: "#/components/schemas/VideoStudioResult"}}
+    VideoStudioResult:
+      type: object
+      additionalProperties: false
+      required: [artifactId, artifactVersionId, assetId, width, height, durationMs, contentType]
+      description: |
+        只包含归档标识。使用生成记录的 projectId 与 assetId，通过认证保护的
+        /api/v1/projects/{projectId}/assets/{assetId}/content（GET、HEAD 与 Range）播放或下载原视频，
+        或通过同一素材的 /thumbnail 读取封面。不会返回供应商 URL。
+      properties:
+        artifactId: {type: string, format: uuid}
+        artifactVersionId: {type: string, format: uuid}
+        assetId: {type: string, format: uuid}
+        width: {type: [integer, "null"], minimum: 1}
+        height: {type: [integer, "null"], minimum: 1}
+        durationMs: {type: [integer, "null"], format: int64, minimum: 1, description: 探测得到的媒体时长（毫秒）}
+        contentType: {type: string}
+    VideoStudioGenerationPage:
+      type: object
+      additionalProperties: false
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/VideoStudioGeneration"}}
+        nextCursor: {type: [string, "null"]}
     ImageStudioParameters:
       type: object
       additionalProperties: false

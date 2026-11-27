@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.llm.application.LlmModeProperties;
+import dev.agenvas.llm.application.LlmTurn;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.task.domain.Task;
@@ -29,6 +30,28 @@ class UsageMediaPricingTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final UsageRepository ledger = mock(UsageRepository.class);
     private final List<UsageEntry> entries = new ArrayList<>();
+
+    @Test
+    void repeatedModelTurnEntriesWithoutATaskIdMatchOnlyTheOriginalPayload() {
+        UsageService service = service();
+        UUID owner = UUID.randomUUID();
+        LlmTurn requested = new LlmTurn(UUID.randomUUID(), UUID.randomUUID(), 1, LlmTurn.Status.REQUESTED, 3,
+                mapper.createObjectNode(), null, NOW, null);
+        LlmTurn responded = new LlmTurn(requested.projectId(), requested.runId(), 1, LlmTurn.Status.RESPONDED, 3,
+                requested.request(), mapper.readTree("{\"metadata\":{\"usage\":{\"promptTokens\":7}}}"), NOW, NOW);
+        service.reserveModelTurn(owner, requested);
+        service.reserveModelTurn(owner, requested);
+        service.settleModelTurn(owner, responded);
+        service.settleModelTurn(owner, responded);
+        assertThat(entries).extracting(UsageEntry::entryType)
+                .containsExactly(UsageEntry.EntryType.RESERVATION, UsageEntry.EntryType.SETTLEMENT);
+
+        LlmTurn conflicting = new LlmTurn(requested.projectId(), requested.runId(), 1, LlmTurn.Status.RESPONDED, 3,
+                requested.request(), mapper.readTree("{\"metadata\":{\"usage\":{\"promptTokens\":8}}}"), NOW, NOW);
+        assertThatThrownBy(() -> service.settleModelTurn(owner, conflicting))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Usage operation key conflicts with another payload");
+    }
 
     @Test
     void imageTokensSettleSeparateRatesFromReportedUsageAndNeverInventActualCharges() {
@@ -361,7 +384,10 @@ class UsageMediaPricingTest {
 
     private UsageService service() {
         when(ledger.insertOnce(any())).thenAnswer(invocation -> {
-            entries.add(invocation.getArgument(0));
+            UsageEntry entry = invocation.getArgument(0);
+            if (entries.stream().anyMatch(prior -> prior.operationKey().equals(entry.operationKey())))
+                return false;
+            entries.add(entry);
             return true;
         });
         when(ledger.findByOperationKey(anyString())).thenAnswer(invocation -> entries.stream()

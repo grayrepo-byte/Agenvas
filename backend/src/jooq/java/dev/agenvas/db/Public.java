@@ -114,6 +114,7 @@ import dev.agenvas.db.tables.ThirdPartyPromptSource;
 import dev.agenvas.db.tables.ThirdPartyPromptSyncSettings;
 import dev.agenvas.db.tables.ToolExecution;
 import dev.agenvas.db.tables.UsageLedger;
+import dev.agenvas.db.tables.VideoStudioGeneration;
 
 import java.util.Arrays;
 import java.util.List;
@@ -711,6 +712,12 @@ public class Public extends SchemaImpl {
     public final UsageLedger USAGE_LEDGER = UsageLedger.USAGE_LEDGER;
 
     /**
+     * Owned video Studio command and frozen request, independent of canvas
+     * nodes; Task owns execution status
+     */
+    public final VideoStudioGeneration VIDEO_STUDIO_GENERATION = VideoStudioGeneration.VIDEO_STUDIO_GENERATION;
+
+    /**
      * No further instances allowed
      */
     private Public() {
@@ -835,7 +842,8 @@ public class Public extends SchemaImpl {
             ThirdPartyPromptSource.THIRD_PARTY_PROMPT_SOURCE,
             ThirdPartyPromptSyncSettings.THIRD_PARTY_PROMPT_SYNC_SETTINGS,
             ToolExecution.TOOL_EXECUTION,
-            UsageLedger.USAGE_LEDGER
+            UsageLedger.USAGE_LEDGER,
+            VideoStudioGeneration.VIDEO_STUDIO_GENERATION
         );
     }
 }

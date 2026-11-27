@@ -194,14 +194,19 @@ describe("PageShell", () => {
     const client = showShell();
     client.setQueryData(["private-project"], { id: "project" });
     useCanvasStore.getState().setTextGenerationPrompt("project:canvas", "未提交提示词");
+    useCanvasStore
+      .getState()
+      .setMediaRunIntent("project:canvas:artifact", { key: "pending-attempt", expectedDraftVersion: 1 });
     await clickControl(await screen.findByRole("button", { name: "退出登录" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("退出失败");
     expect(client.getQueryData(["private-project"])).toBeDefined();
     expect(useCanvasStore.getState().textGenerationDrafts["project:canvas"]?.prompt).toBe("未提交提示词");
+    expect(useCanvasStore.getState().mediaRunIntents["project:canvas:artifact"]?.key).toBe("pending-attempt");
     fail = false;
     await clickControl(screen.getByRole("button", { name: "退出登录" }));
     expect(await screen.findByRole("heading", { name: "登录页" })).toBeInTheDocument();
     await waitFor(() => expect(client.getQueryData(["private-project"])).toBeUndefined());
     expect(useCanvasStore.getState().textGenerationDrafts).toEqual({});
+    expect(useCanvasStore.getState().mediaRunIntents).toEqual({});
   });
 });

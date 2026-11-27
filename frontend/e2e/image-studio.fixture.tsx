@@ -50,6 +50,7 @@ const capability: ImageStudioCapability = {
   supportsTransparentBackground: true,
   complexity: null,
 };
+const savedHasReference = photoMode || scenario === "deletion";
 const saved: ImageStudioBatch = {
   id: "synthetic-saved-batch",
   projectId,
@@ -64,13 +65,13 @@ const saved: ImageStudioBatch = {
     quality: "high",
     generationCount: initialCount,
   },
-  referenceVersionIds: photoMode ? ["synthetic-reference-version"] : [],
-  references: photoMode
+  referenceVersionIds: savedHasReference ? ["synthetic-reference-version"] : [],
+  references: savedHasReference
     ? [
         {
           artifactId: "synthetic-reference",
           versionId: "synthetic-reference-version",
-          assetId: "synthetic-photo-lake-0",
+          assetId: referenceAssetId,
           projectId,
           width: 1920,
           height: 1280,
@@ -138,6 +139,9 @@ const olderBatch: ImageStudioBatch = {
   ],
 };
 const writes: { key: string | null; request: unknown }[] = [];
+const deletions: { id: string; deleteFiles: string | null; csrf: string | null }[] = [];
+const deleted = new Set<string>();
+let failPurge = scenario === "deletion";
 const unexpected: string[] = [];
 let uploads = 0;
 let failAcceptance = !parameters.has("ok");
@@ -207,15 +211,30 @@ window.fetch = async (input, init) => {
     };
     return Response.json(batch);
   }
+  if (method === "DELETE" && url.pathname.startsWith("/api/v1/image-studio/batches/")) {
+    const id = url.pathname.split("/").at(-1)!;
+    const deleteFiles = url.searchParams.get("deleteFiles");
+    deletions.push({ id, deleteFiles, csrf: new Headers(init?.headers).get("X-XSRF-TOKEN") });
+    if (deleteFiles === "true" && failPurge) {
+      failPurge = false;
+      return Response.json(
+        { code: "STUDIO_BATCH_REFERENCED", detail: "An image is still referenced by another batch.", retryable: false },
+        { status: 409, headers: { "Content-Type": "application/problem+json" } },
+      );
+    }
+    deleted.add(id);
+    return new Response(null, { status: deleteFiles === "true" ? 202 : 204 });
+  }
   if (url.pathname === "/api/v1/image-studio/batches")
     return Response.json({
       items: [
         ...(leading ? [{ ...olderBatch, id: "synthetic-leading-batch", createdAt: "2026-11-20T08:00:00Z" }] : []),
         ...(batch ? [batch, saved, previousBatch, olderBatch] : [saved, previousBatch, olderBatch]),
         ...(photoMode ? [] : [pendingBatch, partialBatch]),
-      ],
+      ].filter(row => !deleted.has(row.id)),
       nextCursor: null,
     });
+  if (deleted.has(url.pathname.split("/").at(-1)!)) return new Response(null, { status: 404 });
   if (batch && url.pathname === `/api/v1/image-studio/batches/${batch.id}`) return Response.json(batch);
   if (url.pathname === "/api/v1/image-studio/batches/synthetic-saved-batch") return Response.json(saved);
   if (url.pathname === "/api/v1/image-studio/batches/synthetic-pending-batch") return Response.json(pendingBatch);
@@ -229,7 +248,7 @@ window.fetch = async (input, init) => {
 };
 Object.assign(window, {
   __imageStudio: {
-    evidence: () => ({ writes, uploads, unexpected }),
+    evidence: () => ({ writes, uploads, unexpected, deletions }),
     acknowledge: () => acknowledge?.(),
     startGeneration: () => {
       if (batch)

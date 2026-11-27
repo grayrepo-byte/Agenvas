@@ -87,20 +87,6 @@ public class CanvasCharacterNodeService {
                                     request.width(),
                                     request.height(),
                                     request.zIndex());
-                    CanvasItem before = items.findForUpdate(owner, project, itemId).orElse(null);
-                    if (before != null) {
-                        if (before.subjectType() != CanvasItem.SubjectType.CHARACTER)
-                            throw conflict();
-                        NodeRow row = row(project, itemId);
-                        if (before.subjectType() != CanvasItem.SubjectType.CHARACTER
-                                || before.version() != 0
-                                || row.version() != 0
-                                || !row.selection().equals(request.selection())
-                                || !samePlacement(before, request))
-                            throw conflict();
-                        return ProjectEventService.Change.unchanged(entry(owner, before));
-                    }
-                    validateGroup(owner, project, request.groupId());
                     var now = clock.instant();
                     CanvasItem item = new CanvasItem(
                             itemId,
@@ -119,6 +105,19 @@ public class CanvasCharacterNodeService {
                             0,
                             now,
                             now);
+                    CanvasItem before = items.findForUpdate(owner, project, itemId).orElse(null);
+                    if (before != null) {
+                        if (before.subjectType() != CanvasItem.SubjectType.CHARACTER)
+                            throw conflict();
+                        NodeRow row = row(project, itemId);
+                        if (before.version() != 0
+                                || row.version() != 0
+                                || !row.selection().equals(request.selection())
+                                || !before.hasSameLayout(item) || before.locked() != item.locked())
+                            throw conflict();
+                        return ProjectEventService.Change.unchanged(entry(owner, before));
+                    }
+                    validateGroup(owner, project, request.groupId());
                     if (!items.create(item))
                         throw conflict();
                     repository.insert(project, itemId, request.selection(), 0);
@@ -549,16 +548,6 @@ public class CanvasCharacterNodeService {
                 .count();
         if (members >= MAX_GROUP_MEMBERS)
             throw conflict();
-    }
-
-    private boolean samePlacement(CanvasItem item, CreateNode r) {
-        return item.x().compareTo(r.x()) == 0
-                && item.y().compareTo(r.y()) == 0
-                && item.width().compareTo(r.width()) == 0
-                && item.height().compareTo(r.height()) == 0
-                && item.zIndex() == r.zIndex()
-                && Objects.equals(item.groupId(), r.groupId())
-                && item.locked() == r.locked();
     }
 
     private void editable(CanvasItem item) {

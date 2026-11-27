@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 import dev.agenvas.project.domain.Project;
+import dev.agenvas.project.domain.ProjectPurpose;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.time.Clock;
 import java.time.Instant;
@@ -21,7 +22,7 @@ class ProjectServiceTest {
     private final ProjectService service = new ProjectService(rows, Clock.fixed(now, ZoneOffset.UTC));
 
     private void stored(Project.Status status, long version, UUID runId) {
-        when(rows.isCanvasScope(owner, id)).thenReturn(true);
+        when(rows.isScope(owner, id, ProjectPurpose.CANVAS)).thenReturn(true);
         when(rows.findById(owner, id)).thenReturn(Optional.of(new Project(id, owner, "Project",
                 Project.AspectRatio.SQUARE_1_1, status, 0, version, now, now,
                 status == Project.Status.ACTIVE ? null : now)));
@@ -79,7 +80,7 @@ class ProjectServiceTest {
     @Test
     void hidesInternalScopesFromCanvasManagementWhileKeepingMediaAuthorization() {
         stored(Project.Status.ACTIVE, 0, null);
-        when(rows.isCanvasScope(owner, id)).thenReturn(false);
+        when(rows.isScope(owner, id, ProjectPurpose.CANVAS)).thenReturn(false);
         assertThat(service.get(owner, id).id()).isEqualTo(id);
         assertCode(() -> service.requireCanvasProject(owner, id), "RESOURCE_NOT_FOUND");
         assertCode(() -> service.update(owner, id, 0, "New title", null), "RESOURCE_NOT_FOUND");

@@ -4,9 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
@@ -14,6 +17,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.asset.application.AssetService;
+import dev.agenvas.asset.application.StudioImagePurgeWorker;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
@@ -75,6 +79,7 @@ class ImageStudioWorkflowPostgresIT {
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
+        properties.add("agenvas.asset.studio-purge-worker-enabled", () -> false);
         properties.add("agenvas.credentials.master-key-base64",
                 () -> Base64.getEncoder().encodeToString(new byte[32]));
     }
@@ -102,6 +107,8 @@ class ImageStudioWorkflowPostgresIT {
     ArtifactService artifacts;
     @Autowired
     AssetService assets;
+    @Autowired
+    StudioImagePurgeWorker purgeWorker;
     @Autowired
     JdbcClient jdbc;
     @Autowired
@@ -205,6 +212,112 @@ class ImageStudioWorkflowPostgresIT {
         assertNoCanvas(foreign.projectId());
         assertThat(jdbc.sql("select count(*) from task where project_id=:id")
                 .param("id", UUID.fromString(foreign.projectId())).query(Integer.class).single()).isZero();
+    }
+
+    @Test
+    void deletingHistoryByDefaultKeepsFilesAndTheOriginalCommandCannotGenerateAgain() throws Exception {
+        var owner = owner();
+        var fixture = configured(owner);
+        var mvc = mvc();
+        var auth = authentication(auth(owner));
+        var request = request(fixture, "Synthetic retained files", 1);
+        String commandKey = UUID.randomUUID().toString();
+        String id = submit(mvc, owner, request, commandKey).path("id").asText();
+        assertThat(worker.submitOnce("studio-retain-worker")).isEqualTo(1);
+        String asset = detail(mvc, owner, id).at("/tasks/0/results/0/assetId").asText();
+        String path = ROOT + "/batches/" + id;
+        mvc.perform(delete(path).with(authentication(auth(otherOwner()))).with(csrf()))
+                .andExpect(status().isNotFound());
+        mvc.perform(delete(path).with(auth)).andExpect(status().isForbidden());
+        mvc.perform(delete(path).with(auth).with(csrf())).andExpect(status().isNoContent());
+        mvc.perform(delete(path).with(auth).with(csrf())).andExpect(status().isNoContent());
+        mvc.perform(delete(path).param("deleteFiles", "true").with(auth).with(csrf()))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("STUDIO_DELETE_OPTION_MISMATCH"));
+        mvc.perform(get(path).with(auth)).andExpect(status().isNotFound());
+        var list = mapper.readTree(mvc.perform(get(ROOT + "/batches").with(auth)).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray());
+        assertThat(list.path("items").valueStream().map(row -> row.path("id").asText()).toList())
+                .doesNotContain(id);
+        mvc.perform(get(ROOT + "/batches").param("before", id).with(auth)).andExpect(status().isOk());
+        mvc.perform(post(ROOT + "/batches").with(auth).with(csrf()).header("Idempotency-Key", commandKey)
+                .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(request)))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("STUDIO_BATCH_DELETED"));
+        purgeWorker.purgeDueImages();
+        mvc.perform(get(assetPath(fixture.projectId(), asset, "content")).with(auth)).andExpect(status().isOk());
+        mvc.perform(get(assetPath(fixture.projectId(), asset, "thumbnail")).with(auth)).andExpect(status().isOk());
+        assertThat(jdbc.sql("select count(*) from image_studio_batch_task where batch_id = :id")
+                .param("id", UUID.fromString(id)).query(Integer.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void permanentDeletionRevokesURLsAndRemovesOnlyArchivedGeneratedFiles() throws Exception {
+        var owner = owner();
+        var fixture = configured(owner);
+        var mvc = mvc();
+        var auth = authentication(auth(owner));
+        var reference = mapper.readTree(mvc.perform(multipart(ROOT + "/references")
+                .file(new MockMultipartFile("file", "synthetic-purge-reference.png", "image/png", png()))
+                .with(auth).with(csrf())).andExpect(status().isCreated()).andReturn().getResponse()
+                .getContentAsByteArray());
+        var payload = request(fixture, "Synthetic permanent deletion", 2);
+        payload.withArray("referenceVersionIds").add(reference.path("versionId").asText());
+        String id = submit(mvc, owner, payload).path("id").asText();
+        String path = ROOT + "/batches/" + id;
+        assertThat(worker.submitOnce("studio-purge-worker")).isEqualTo(1);
+        mvc.perform(delete(path).param("deleteFiles", "true").with(auth).with(csrf()))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("STUDIO_BATCH_UNSETTLED"));
+        assertThat(worker.submitOnce("studio-purge-worker")).isEqualTo(1);
+        var results = detail(mvc, owner, id).path("tasks").valueStream()
+                .map(task -> task.at("/results/0")).toList();
+        UUID projectId = UUID.fromString(fixture.projectId());
+        var localFiles = results.stream()
+                .map(result -> assets.get(owner.userId(), projectId, UUID.fromString(result.path("assetId").asText())))
+                .toList();
+        assertThat(localFiles).hasSize(2).allSatisfy(file -> {
+            assertThat(file.path()).exists();
+            assertThat(file.path().resolveSibling(file.asset().id() + ".thumb.png")).exists();
+        });
+        mvc.perform(delete(path).param("deleteFiles", "true").with(auth).with(csrf()))
+                .andExpect(status().isAccepted());
+        for (var result : results) {
+            String asset = result.path("assetId").asText();
+            mvc.perform(head(assetPath(fixture.projectId(), asset, "content")).with(auth))
+                    .andExpect(status().isNotFound());
+            mvc.perform(get(assetPath(fixture.projectId(), asset, "thumbnail")).with(auth))
+                    .andExpect(status().isNotFound());
+        }
+        purgeWorker.purgeDueImages();
+        assertThat(localFiles).allSatisfy(file -> {
+            assertThat(file.path()).doesNotExist();
+            assertThat(file.path().resolveSibling(file.asset().id() + ".thumb.png")).doesNotExist();
+        });
+        mvc.perform(delete(path).param("deleteFiles", "true").with(auth).with(csrf()))
+                .andExpect(status().isAccepted());
+        mvc.perform(get(assetPath(fixture.projectId(), reference.path("assetId").asText(), "content")).with(auth))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void cannotPurgeAnOutputFrozenAsAnotherBatchReferenceEvenWhenThatBatchIsHidden() throws Exception {
+        var owner = owner();
+        var fixture = configured(owner);
+        var mvc = mvc();
+        var auth = authentication(auth(owner));
+        String sourceId = submit(mvc, owner, request(fixture, "Synthetic source", 1)).path("id").asText();
+        assertThat(worker.submitOnce("studio-purge-reference-worker")).isEqualTo(1);
+        var output = detail(mvc, owner, sourceId).at("/tasks/0/results/0");
+        var dependent = request(fixture, "Synthetic generated reference", 1);
+        dependent.withArray("referenceVersionIds").add(output.path("artifactVersionId").asText());
+        String dependentId = submit(mvc, owner, dependent).path("id").asText();
+        mvc.perform(delete(ROOT + "/batches/" + dependentId).with(auth).with(csrf()))
+                .andExpect(status().isNoContent());
+        String path = ROOT + "/batches/" + sourceId;
+        mvc.perform(delete(path).param("deleteFiles", "true").with(auth).with(csrf()))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("STUDIO_BATCH_ASSETS_IN_USE"));
+        mvc.perform(get(path).with(auth)).andExpect(status().isOk());
+        mvc.perform(get(assetPath(fixture.projectId(), output.path("assetId").asText(), "content")).with(auth))
+                .andExpect(status().isOk());
+        assertThat(worker.submitOnce("studio-purge-reference-worker")).isEqualTo(1);
     }
 
     @Test

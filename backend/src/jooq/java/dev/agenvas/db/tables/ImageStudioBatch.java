@@ -108,6 +108,19 @@ public class ImageStudioBatch extends TableImpl<ImageStudioBatchRecord> {
      */
     public final TableField<ImageStudioBatchRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "Acceptance time used for stable history pagination");
 
+    /**
+     * The column <code>public.image_studio_batch.deleted_at</code>. Removal
+     * time from Studio history; immutable command and task membership are
+     * retained
+     */
+    public final TableField<ImageStudioBatchRecord, OffsetDateTime> DELETED_AT = createField(DSL.name("deleted_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "Removal time from Studio history; immutable command and task membership are retained");
+
+    /**
+     * The column <code>public.image_studio_batch.delete_files</code>. Explicit
+     * original and thumbnail purge choice; repeated deletion must match
+     */
+    public final TableField<ImageStudioBatchRecord, Boolean> DELETE_FILES = createField(DSL.name("delete_files"), SQLDataType.BOOLEAN, this, "Explicit original and thumbnail purge choice; repeated deletion must match");
+
     private ImageStudioBatch(Name alias, Table<ImageStudioBatchRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -236,6 +249,7 @@ public class ImageStudioBatch extends TableImpl<ImageStudioBatchRecord> {
     public List<Check<ImageStudioBatchRecord>> getChecks() {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("ck_image_studio_batch_command"), "(((length(btrim((command_key)::text)) >= 1) AND (length(btrim((command_key)::text)) <= 160)))", true),
+            Internal.createCheck(this, DSL.name("ck_image_studio_batch_deletion"), "(((deleted_at IS NULL) = (delete_files IS NULL)))", true),
             Internal.createCheck(this, DSL.name("ck_image_studio_batch_hash"), "((request_hash ~ '^[0-9a-f]{64}$'::text))", true),
             Internal.createCheck(this, DSL.name("ck_image_studio_batch_request"), "(COALESCE(((jsonb_typeof(request_json) = 'object'::text) AND ((request_json ->> 'schemaVersion'::text) = '1'::text)), false))", true)
         );

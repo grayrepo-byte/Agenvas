@@ -125,7 +125,7 @@ public class CanvasEditService {
                 canvas.validateGeometry(change.x(), change.y(), change.width(), change.height(), change.zIndex());
                 CanvasItem target = presentation(current, canvas.validateTitle(change.title()), change.x(), change.y(),
                         change.width(), change.height(), change.zIndex(), change.groupId(), change.locked());
-                if (current.locked() && !sameLayout(current, target))
+                if (current.locked() && !current.hasSameLayout(target))
                     throw locked();
                 beforeItems.add(current);
                 afterItems.add(target);
@@ -274,7 +274,7 @@ public class CanvasEditService {
                 CanvasItem target = presentation(current, desired.title(), desired.x(), desired.y(), desired.width(),
                         desired.height(), desired.zIndex(), desired.groupId(), desired.locked());
                 // Explicitly replaying SET_LOCKED may unlock; other movement still respects current locks.
-                if (current.locked() && !sameLayout(current, target))
+                if (current.locked() && !current.hasSameLayout(target))
                     throw locked();
                 replacements.add(target);
                 currentItems.put(target.id(), target);
@@ -463,12 +463,7 @@ public class CanvasEditService {
         return a.projectId().equals(b.projectId()) && a.subjectId().equals(b.subjectId())
                 && a.subjectType() == b.subjectType()
                 && a.title().equals(b.title())
-                && sameLayout(a, b) && a.locked() == b.locked();
-    }
-    static boolean sameLayout(CanvasItem a, CanvasItem b) {
-        return a.x().compareTo(b.x()) == 0 && a.y().compareTo(b.y()) == 0 && a.width().compareTo(b.width()) == 0
-                && a.height().compareTo(b.height()) == 0 && a.zIndex() == b.zIndex()
-                && Objects.equals(a.groupId(), b.groupId());
+                && a.hasSameLayout(b) && a.locked() == b.locked();
     }
     private static boolean sameGroup(GroupState a, GroupState b) {
         if (a == null)

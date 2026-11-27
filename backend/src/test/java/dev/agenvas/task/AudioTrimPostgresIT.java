@@ -124,6 +124,8 @@ class AudioTrimPostgresIT {
     @Autowired
     UsageService usage;
     @Autowired
+    org.springframework.transaction.support.TransactionTemplate transactions;
+    @Autowired
     MediaToolRunner tools;
     @Autowired
     MiniMaxH3ReferenceLoader h3References;
@@ -191,6 +193,22 @@ class AudioTrimPostgresIT {
         assertThat(usage.listProject(owner.userId(), source.project()))
                 .filteredOn(entry -> accepted.id().equals(entry.taskId()))
                 .allSatisfy(entry -> assertThat(entry.costSource()).isEqualTo("LOCAL_NO_COST"));
+    }
+
+    @Test
+    void replayingLocalUsageAfterPostgresRoundTripKeepsOneEntryAndEvent() throws Exception {
+        Source source = audioSource();
+        Task task = run(source, 1_000, 2_300, AudioExtractionParameters.Format.WAV, "replay-local-audio-usage");
+        try {
+            var reservation = usage.listProject(owner.userId(), source.project()).getFirst();
+            transactions.executeWithoutResult(status -> usage.reserveMediaTask(owner.userId(), task,
+                    reservation.costSource(), reservation.providerConfigVersion()));
+            assertThat(usage.listProject(owner.userId(), source.project())).containsExactly(reservation);
+            assertThat(jdbc.sql("select count(*) from project_event where project_id=:id and type='usage.changed'")
+                    .param("id", source.project()).query(Integer.class).single()).isOne();
+        } finally {
+            direct.cancelQueued(owner.userId(), source.project(), task.id());
+        }
     }
 
     @Test

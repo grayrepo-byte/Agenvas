@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { t } from "../../shared/i18n";
 import { MediaPreviewDialog } from "./MediaPreviewDialog";
 
 const IMAGE_URL = "/synthetic-preview.png";
@@ -10,17 +11,24 @@ const IMAGE_WIDTH = 2400;
 const IMAGE_HEIGHT = 1600;
 const VIEWPORT_WIDTH = 1024;
 const VIEWPORT_HEIGHT = 640;
+const GALLERY_SLIDES = [
+  { src: IMAGE_URL, alt: "Slot 1", width: IMAGE_WIDTH, height: IMAGE_HEIGHT },
+  { src: "/synthetic-third.png", alt: "Slot 3", width: IMAGE_WIDTH, height: IMAGE_HEIGHT },
+] as const;
 
 function PreviewHarness({
   kind = "image",
+  gallery = false,
   onCanvasEvent = () => {},
   onClose = () => {},
 }: {
   kind?: "image" | "video";
+  gallery?: boolean;
   onCanvasEvent?: () => void;
   onClose?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [index, setIndex] = useState(1);
   return (
     <div
       onKeyDown={onCanvasEvent}
@@ -41,6 +49,16 @@ function PreviewHarness({
           contentType={kind === "video" ? "video/webm" : undefined}
           width={IMAGE_WIDTH}
           height={IMAGE_HEIGHT}
+          imageGallery={
+            gallery
+              ? {
+                  slides: GALLERY_SLIDES,
+                  index,
+                  onIndexChange: setIndex,
+                  positionLabel: index === 1 ? "03 / 04" : "01 / 04",
+                }
+              : undefined
+          }
           onClose={() => {
             onClose();
             setOpen(false);
@@ -94,6 +112,36 @@ describe("MediaPreviewDialog", () => {
       transform: "scale(2) translateX(0px) translateY(0px)",
     });
     expect(within(dialog).getByRole("button", { name: "缩小" })).toBeEnabled();
+  });
+
+  it("navigates a finite gallery without losing focus or loading offscreen photos", async () => {
+    render(<PreviewHarness gallery />);
+    const { user, trigger, dialog } = await openPreview();
+    const viewer = within(dialog);
+    const previous = viewer.getByRole("button", { name: t("media.preview.previousImage") });
+    const next = viewer.getByRole("button", { name: t("media.preview.nextImage") });
+    const close = viewer.getByRole("button", { name: "关闭预览" });
+    await waitFor(() => expect(close).toHaveFocus());
+    expect(viewer.getByRole("img", { name: "Slot 3" })).toHaveAttribute("src", GALLERY_SLIDES[1].src);
+    expect(dialog.querySelectorAll("img")).toHaveLength(1);
+    expect(viewer.getByText("03 / 04")).toBeVisible();
+    expect(next).toHaveAttribute("aria-disabled", "true");
+
+    await user.click(previous);
+    expect(viewer.getByRole("img", { name: "Slot 1" })).toHaveAttribute("src", IMAGE_URL);
+    expect(viewer.getByText("01 / 04")).toBeVisible();
+    expect(previous).toHaveAttribute("aria-disabled", "true");
+    expect(previous).toHaveFocus();
+    await user.keyboard("{ArrowLeft}");
+    expect(viewer.getByText("01 / 04")).toBeVisible();
+    await user.keyboard("{ArrowRight}");
+    expect(viewer.getByText("03 / 04")).toBeVisible();
+    expect(previous).toHaveFocus();
+    expect(screen.getByRole("dialog")).toBe(dialog);
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
   });
 
   it("retries a failed image and keeps focus in the existing dialog", async () => {

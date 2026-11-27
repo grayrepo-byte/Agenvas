@@ -98,6 +98,31 @@ class CanvasPostgresIT {
     }
 
     @Test
+    void fractionalPlacementsAndMovesReplayAtTheStoredPrecision() {
+        UUID user = owner.userId();
+        UUID project = projectService.create(user, "Fractional layout", Project.AspectRatio.LANDSCAPE_16_9).id();
+        UUID itemId = UUID.randomUUID();
+        var artifact = createText(user, project, "Card");
+        var placement = place(itemId, artifact.artifact().id(), "-20.1235", "40.12341");
+        canvasService.apply(user, project, List.of(placement));
+        var placed = canvasService.apply(user, project, List.of(placement)).getFirst().item();
+        assertThat(placed.x()).isEqualByComparingTo("-20.124");
+        assertThat(placed.y()).isEqualByComparingTo("40.123");
+        assertThat(placed.version()).isZero();
+
+        var move = new CanvasService.UpdateLayout(itemId, 0, decimal("100.9876"), decimal("120.2"),
+                decimal("280.1235"), decimal("180.00049"), 3, null);
+        canvasService.apply(user, project, List.of(move));
+        var moved = canvasService.apply(user, project, List.of(move)).getFirst().item();
+        assertThat(moved.width()).isEqualByComparingTo("280.124");
+        assertThat(moved.height()).isEqualByComparingTo("180");
+        assertThat(moved.version()).isOne();
+        var different = new CanvasService.UpdateLayout(itemId, 0, decimal("100.9874"), move.y(),
+                move.width(), move.height(), move.zIndex(), null);
+        assertThatThrownByCode("CANVAS_VERSION_CONFLICT", () -> canvasService.apply(user, project, List.of(different)));
+    }
+
+    @Test
     void layoutPersistsFailedBatchRollsBackAndRemovingCardKeepsArtifact() throws Exception {
         Project project = projectService.create(
                 owner.userId(), "Canvas project", Project.AspectRatio.LANDSCAPE_16_9);

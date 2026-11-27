@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
@@ -149,13 +150,28 @@ class ImageStudioPostgresIT {
         assertThat(mapper.readTree(mvc.perform(get("/api/v1/image-studio/batches").with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("items"))
                 .singleElement().satisfies(item -> assertThat(item).isEqualTo(restored));
+        var deletion = readContract().at("/paths/~1api~1v1~1image-studio~1batches~1{batchId}/delete");
+        var fileOption = deletion.path("parameters").valueStream()
+                .filter(parameter -> "deleteFiles".equals(parameter.path("name").asText())).findFirst().orElseThrow();
+        assertThat(fileOption.path("in").asText()).isEqualTo("query");
+        assertThat(fileOption.at("/schema/type").asText()).isEqualTo("boolean");
+        assertThat(fileOption.at("/schema/default").isBoolean()).isTrue();
+        assertThat(fileOption.at("/schema/default").asBoolean()).isFalse();
+        var removed = mvc.perform(delete("/api/v1/image-studio/batches/{batchId}", restored.path("id").asText())
+                .with(auth).with(csrf())).andExpect(status().isNoContent()).andReturn().getResponse();
+        assertThat(deletion.path("responses").has(Integer.toString(removed.getStatus()))).isTrue();
+        assertThat(removed.getContentAsByteArray()).isEmpty();
     }
 
     private void assertContract(JsonNode value, String schemaName) {
+        JsonNode schemas = readContract().at("/components/schemas");
+        assertSchema(value, schemas.path(schemaName), schemas);
+    }
+
+    private JsonNode readContract() {
         var yaml = new org.springframework.beans.factory.config.YamlMapFactoryBean();
         yaml.setResources(new org.springframework.core.io.FileSystemResource("../contracts/openapi.yaml"));
-        JsonNode schemas = mapper.valueToTree(yaml.getObject()).at("/components/schemas");
-        assertSchema(value, schemas.path(schemaName), schemas);
+        return mapper.valueToTree(yaml.getObject());
     }
 
     private void assertSchema(JsonNode value, JsonNode schema, JsonNode schemas) {

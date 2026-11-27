@@ -1,5 +1,6 @@
 package dev.agenvas.provider.application;
 
+import dev.agenvas.task.domain.MediaExecutionSurface;
 import dev.agenvas.task.domain.Task;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -35,11 +36,14 @@ final class FrozenMediaInputs {
             throw new IllegalArgumentException("Frozen media input images are invalid");
         }
         List<Image> result = new ArrayList<>();
-        Set<UUID> versions = new HashSet<>();
+        // Studio assigns exact versions by role; one version can fill both the first and last frame.
+        Set<UUID> versions = "images".equals(field) && MediaExecutionSurface.isVideoStudio(task)
+                ? null
+                : new HashSet<>();
         for (int index = 0; index < images.size(); index++) {
             JsonNode image = images.path(index);
             UUID versionId = UUID.fromString(image.path("versionId").asText());
-            if (image.path("order").asInt(-1) != index || !versions.add(versionId)) {
+            if (image.path("order").asInt(-1) != index || versions != null && !versions.add(versionId)) {
                 throw new IllegalArgumentException(
                         "Frozen media input order or version identity is invalid");
             }
