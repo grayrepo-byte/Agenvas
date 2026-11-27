@@ -1,5 +1,11 @@
 import { create } from "zustand";
-import type { VideoStudioCommand, VideoStudioFrame, VideoStudioGeneration } from "../../shared/api/videoStudio";
+import type { CreatorInputField } from "../../shared/creatorInputs";
+import type {
+  VideoStudioCapability,
+  VideoStudioCommand,
+  VideoStudioFrame,
+  VideoStudioGeneration,
+} from "../../shared/api/videoStudio";
 
 export type VideoStudioSettings = Pick<
   VideoStudioGeneration,
@@ -15,6 +21,14 @@ export type VideoStudioSettings = Pick<
 > & { duration: string };
 export type FrameSlot = "startFrame" | "endFrame";
 
+export const MAX_REFERENCES = 14;
+export const LIMIT_KEYS = { IMAGE: "image", VIDEO: "video", AUDIO: "audio" } as const;
+export const FRAME_LABELS = { startFrame: "videoStudio.startFrame", endFrame: "videoStudio.endFrame" } as const;
+
+export function allowsFrame(model: VideoStudioCapability, mode: VideoStudioSettings["mode"], slot: FrameSlot) {
+  return mode === "START_END" && model.modes.includes(mode) && (slot === "startFrame" || model.supportsEndFrame);
+}
+
 export type VideoStudioDraft = {
   prompt: string;
   settings: VideoStudioSettings | null;
@@ -23,6 +37,7 @@ export type VideoStudioDraft = {
   command: VideoStudioCommand | null;
   viewingSubmission: boolean;
   acceptanceError: string | null;
+  frameUploadError: string | null;
 };
 
 const EMPTY_DRAFT: VideoStudioDraft = {
@@ -33,6 +48,7 @@ const EMPTY_DRAFT: VideoStudioDraft = {
   command: null,
   viewingSubmission: false,
   acceptanceError: null,
+  frameUploadError: null,
 };
 
 type DraftStore = {
@@ -60,4 +76,17 @@ export function studioFrames(settings: Pick<VideoStudioSettings, FrameSlot>): [F
     ["startFrame", settings.startFrame],
     ["endFrame", settings.endFrame],
   ];
+}
+
+/** Only display a workflow's ratio when all of its published choices identify a frame shape. */
+export function workflowRatio(field: CreatorInputField, value: unknown): string | null {
+  if (field.type !== "SELECT" || !field.options?.length) return null;
+  const ratioPattern = /^([1-9]\d*:[1-9]\d*)(?:\s+\([^)]*\))?$/;
+  let selected: string | null = null;
+  for (const option of field.options) {
+    const ratio = ratioPattern.exec(String(option.value)) ?? ratioPattern.exec(option.label);
+    if (!ratio) return null;
+    if (option.value === value) selected = ratio[1]!;
+  }
+  return selected;
 }

@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -679,6 +680,7 @@ public class CanvasService {
             if (before.equals(after)) {
                 return ProjectEventService.Change.unchanged(result);
             }
+            validateGroupGrowth(before, after);
             ObjectNode payload = objectMapper.createObjectNode();
             ArrayNode itemIds = payload.putArray("itemIds");
             for (CanvasCommand command : commands) {
@@ -690,6 +692,28 @@ public class CanvasService {
                             "canvas.items.changed", 1, projectId, 0, payload));
         })
                 .value();
+    }
+
+    /** Check the final membership under the project lock, so a full group can exchange members in one batch. */
+    private void validateGroupGrowth(List<CanvasItem> before, List<CanvasItem> after) {
+        if (after.size() <= MAX_GROUP_MEMBERS)
+            return;
+        Map<UUID, Long> original = groupSizes(before);
+        for (var group : groupSizes(after).entrySet()) {
+            if (group.getValue() > MAX_GROUP_MEMBERS && group.getValue() > original.getOrDefault(group.getKey(), 0L))
+                throw groupLimit();
+        }
+    }
+
+    private Map<UUID, Long> groupSizes(List<CanvasItem> items) {
+        return items.stream().filter(item -> item.groupId() != null)
+                .collect(Collectors.groupingBy(CanvasItem::groupId, Collectors.counting()));
+    }
+
+    private ApiProblemException groupLimit() {
+        return new ApiProblemException(HttpStatus.BAD_REQUEST, "CANVAS_EDIT_LIMIT",
+                ApiMessage.of("api.canvas-controller.canvas-command-is-invalid"),
+                ApiMessage.of("api.canvas-edit.limit"), false);
     }
 
     /** Fills an empty media node; uploads from a completed node derive a new result node. */
@@ -879,9 +903,7 @@ public class CanvasService {
             if (existing.stream().noneMatch(item -> item.id().equals(command.itemId()))
                     && existing.stream().filter(item -> command.groupId().equals(item.groupId()))
                             .count() >= MAX_GROUP_MEMBERS) {
-                throw new ApiProblemException(HttpStatus.BAD_REQUEST, "CANVAS_EDIT_LIMIT",
-                        ApiMessage.of("api.canvas-controller.canvas-command-is-invalid"),
-                        ApiMessage.of("api.canvas-edit.limit"), false);
+                throw groupLimit();
             }
         }
         validateGeometry(
@@ -997,7 +1019,10 @@ public class CanvasService {
                 command.zIndex());
         CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, command.itemId())
                 .orElseThrow(this::notFound);
-        if (sameLayout(current, command)
+        CanvasItem updated = current.withLayout(
+                command.x(), command.y(), command.width(), command.height(),
+                command.zIndex(), command.groupId());
+        if (current.hasSameLayout(updated)
                 && (current.version() == command.expectedVersion()
                         || current.version() == command.expectedVersion() + 1)) {
             return;
@@ -1016,9 +1041,6 @@ public class CanvasService {
         if (command.groupId() != null && !java.util.Objects.equals(command.groupId(), current.groupId())
                 && !canvasItems.groupExists(ownerId, projectId, command.groupId()))
             throw conflict();
-        CanvasItem updated = current.withLayout(
-                command.x(), command.y(), command.width(), command.height(),
-                command.zIndex(), command.groupId());
         if (!canvasItems.update(ownerId, updated, command.expectedVersion(), clock.instant())) {
             throw conflict();
         }
@@ -1115,28 +1137,8 @@ public class CanvasService {
                 && left.subjectId().equals(right.subjectId())
                 && java.util.Objects.equals(left.selectedVersionId(), right.selectedVersionId())
                 && left.title().equals(right.title())
-                && compare(left.x(), right.x())
-                && compare(left.y(), right.y())
-                && compare(left.width(), right.width())
-                && compare(left.height(), right.height())
-                && left.zIndex() == right.zIndex()
-                && java.util.Objects.equals(left.groupId(), right.groupId())
+                && left.hasSameLayout(right)
                 && left.locked() == right.locked();
-    }
-
-    /** 比较更新请求中的布局字段，BigDecimal 按数值相等而非 scale 比较。 */
-    private boolean sameLayout(CanvasItem item, UpdateLayout command) {
-        return compare(item.x(), command.x())
-                && compare(item.y(), command.y())
-                && compare(item.width(), command.width())
-                && compare(item.height(), command.height())
-                && item.zIndex() == command.zIndex()
-                && java.util.Objects.equals(item.groupId(), command.groupId());
-    }
-
-    /** 忽略十进制 scale 比较坐标或尺寸数值。 */
-    private boolean compare(BigDecimal left, BigDecimal right) {
-        return left.compareTo(right) == 0;
     }
 
     /** 拒绝 null、越界坐标/尺寸及超出 [-1000,1000] 的层级。 */

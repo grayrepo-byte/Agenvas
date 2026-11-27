@@ -77,9 +77,10 @@ beforeEach(() => {
 });
 
 describe("VideoStudioResults", () => {
-  it("uses the reported task state, without media or generation actions for empty and unresolved results", () => {
+  it("uses the reported task state, without media or generation actions for empty and unresolved results", async () => {
+    const user = userEvent.setup();
     const { container, rerender } = render(<VideoStudioResults />);
-    expect(screen.getByText(t("videoStudio.noResults"))).toBeVisible();
+    expect(screen.getByText(t("videoStudio.emptyPreviewHint"))).toBeVisible();
     rerender(<VideoStudioResults generation={generation("READY")} />);
     expect(screen.getByRole("status", { name: t("tasks.status.queued") })).toBeVisible();
     rerender(<VideoStudioResults generation={generation("SUBMITTING")} />);
@@ -88,7 +89,10 @@ describe("VideoStudioResults", () => {
     expect(screen.getByRole("status", { name: t("logs.calls.waitingForExternal") })).toBeVisible();
     rerender(<VideoStudioResults generation={generation("UNKNOWN", [], "PROVIDER_CALL_TIMEOUT")} />);
     expect(screen.getByRole("status")).toHaveTextContent(t("tasks.status.unknown"));
-    expect(screen.getByRole("alert")).toHaveTextContent("PROVIDER_CALL_TIMEOUT");
+    expect(screen.getByRole("alert")).toHaveTextContent(t("imageStudio.unknownHint"));
+    expect(screen.getByText("PROVIDER_CALL_TIMEOUT")).not.toBeVisible();
+    await user.click(screen.getByText(t("imageStudio.errorDetails")));
+    expect(screen.getByText("PROVIDER_CALL_TIMEOUT")).toBeVisible();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
@@ -108,6 +112,7 @@ describe("VideoStudioResults", () => {
     expect(download).toHaveAttribute("href", source("first"));
     expect(download).toHaveAttribute("download", "video-first.mp4");
     expect(screen.getByText(t("videoStudio.resultSaved"))).toBeVisible();
+    expect(screen.getByText(`360 × 640 · ${t("agent.approval.seconds", { 0: 5 })}`)).toBeVisible();
     expect(screen.getByRole("status", { name: t("videoStudio.previewLoading") })).toBeVisible();
     expect(screen.queryByRole("button", { name: t("video.review.play") })).not.toBeInTheDocument();
 
@@ -115,8 +120,12 @@ describe("VideoStudioResults", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(t("videoStudio.previewFailed"));
     expect(screen.getByText(t("videoStudio.resultSaved"))).toBeVisible();
     expect(download).toHaveAttribute("href", source("first"));
-    await user.click(screen.getByRole("button", { name: t("videoStudio.previewReload") }));
+    const retry = screen.getByRole("button", { name: t("videoStudio.previewReload") });
+    retry.focus();
+    await user.keyboard("{Enter}");
     const replacement = player(container);
+    expect(screen.getByRole("button", { name: t("videoStudio.previewReload") })).toBe(retry);
+    expect(retry).toHaveFocus();
     expect(replacement).not.toBe(video);
     expect(replacement).toHaveAttribute("src", `${source("first")}?previewRetry=1`);
     expect(download).toHaveAttribute("href", source("first"));
@@ -125,6 +134,63 @@ describe("VideoStudioResults", () => {
     expect(screen.getByRole("slider", { name: t("video.review.progress") })).toHaveAttribute("max", "5");
     expect(play).not.toHaveBeenCalled();
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it("continues playing the first displayed result when polling inserts an earlier archive", async () => {
+    const user = userEvent.setup();
+    const first = archived("first-visible");
+    const late = archived("late");
+    const { container, rerender } = render(<VideoStudioResults generation={generation("WAITING_PROVIDER")} />);
+    rerender(<VideoStudioResults generation={generation("SUCCEEDED", [first])} />);
+    const inline = player(container);
+    load(inline);
+    await user.click(screen.getByRole("button", { name: t("video.review.play") }));
+    inline.currentTime = 2;
+    rerender(<VideoStudioResults generation={generation("SUCCEEDED", [late, first])} />);
+    expect(player(container)).toBe(inline);
+    expect(inline.paused).toBe(false);
+    expect(inline.currentTime).toBe(2);
+    expect(screen.getByRole("combobox", { name: t("videoStudio.resultTitle") })).toHaveTextContent(
+      t("videoStudio.resultPosition", { 0: 2, 1: 2 }),
+    );
+  });
+
+  it("sizes an unmeasured archive from the media file and keeps its frame when playback fails", () => {
+    const clip = { ...archived("unmeasured"), width: null, height: null };
+    const { container } = render(<VideoStudioResults generation={generation("SUCCEEDED", [clip])} />);
+    const video = player(container);
+    const frame = video.parentElement!;
+    Object.defineProperties(video, {
+      videoWidth: { configurable: true, value: 640 },
+      videoHeight: { configurable: true, value: 360 },
+    });
+    expect(frame.style.getPropertyValue("--video-studio-preview-ratio")).toBe(String(9 / 16));
+    load(video);
+    expect(frame.style.getPropertyValue("--video-studio-preview-ratio")).toBe(String(16 / 9));
+    fireEvent.error(video);
+    expect(frame.style.getPropertyValue("--video-studio-preview-ratio")).toBe(String(16 / 9));
+  });
+
+  it("reports buffering only during playback and keeps keyboard recovery reachable on a later media error", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<VideoStudioResults generation={generation("SUCCEEDED", [archived("clip")])} />);
+    const video = player(container);
+    load(video);
+    const buffering = () => screen.queryByRole("status", { name: t("videoStudio.previewBuffering") });
+    fireEvent.waiting(video);
+    expect(buffering()).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: t("video.review.play") }));
+    fireEvent.waiting(video);
+    expect(buffering()).toBeVisible();
+    expect(screen.getByRole("button", { name: t("video.review.pause") })).toBeEnabled();
+    fireEvent.playing(video);
+    expect(buffering()).not.toBeInTheDocument();
+    fireEvent.waiting(video);
+    await user.click(screen.getByRole("button", { name: t("video.review.pause") }));
+    expect(buffering()).not.toBeInTheDocument();
+    screen.getByRole("slider", { name: t("video.review.progress") }).focus();
+    fireEvent.error(video);
+    expect(screen.getByRole("button", { name: t("videoStudio.previewReload") })).toHaveFocus();
   });
 
   it("preserves the chosen archive through late reordered results and stops it when switching", async () => {

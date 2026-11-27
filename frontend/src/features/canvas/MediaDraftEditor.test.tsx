@@ -259,13 +259,14 @@ function setup(
   );
   if (options.handlers) server.use(...options.handlers);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  render(
+  const view = render(
     <QueryClientProvider client={client}>
       <MediaDraftEditor artifact={{ ...artifact, kind: options.kind ?? "IMAGE" }} canvasItemId={CANVAS_ITEM_ID} />
     </QueryClientProvider>,
   );
   return {
     client,
+    unmount: view.unmount,
     saves,
     setTasks: (next: Task[]) => {
       tasks = next;
@@ -274,7 +275,7 @@ function setup(
 }
 
 describe("MediaDraftEditor", () => {
-  beforeEach(() => useCanvasStore.setState({ mediaDraftRecoveries: {}, imageRatioDrafts: {} }));
+  beforeEach(() => useCanvasStore.setState({ mediaDraftRecoveries: {}, imageRatioDrafts: {}, mediaRunIntents: {} }));
   afterEach(async () => {
     cleanup();
     // Closing can flush a debounced save; let it settle before the shared HTTP handlers reset.
@@ -5841,13 +5842,16 @@ describe("MediaDraftEditor", () => {
     expect(saved[1]).toMatchObject({ expectedVersion: 1, prompt: "Newer saved prompt and next edit" });
   });
 
-  it("retries a lost run response with its original key and payload after the server draft advances", async () => {
+  it("rechecks a lost run receipt after reopening the card with a newer server draft", async () => {
     const keys: (string | null)[] = [];
     const payloads: unknown[] = [];
     let remoteVersion = 0;
-    const { client } = setup({
+    const { client, unmount } = setup({
       handlers: [
         http.get(DRAFT_URL, () => HttpResponse.json({ ...initialDraft, version: remoteVersion })),
+        http.get("/api/v1/settings/media-connections", () =>
+          HttpResponse.json(remoteVersion ? { connections: [], defaults: [] } : settings),
+        ),
         http.post(`${BASE}/run`, async ({ request }) => {
           keys.push(request.headers.get("Idempotency-Key"));
           payloads.push(await request.json());
@@ -5861,10 +5865,22 @@ describe("MediaDraftEditor", () => {
     await user.click(screen.getByRole("button", { name: "运行" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("运行失败：");
     await act(async () => {
-      await client.invalidateQueries({ queryKey: ["media-draft", PROJECT_ID, CANVAS_ITEM_ID] });
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["media-draft", PROJECT_ID, CANVAS_ITEM_ID] }),
+        client.invalidateQueries({ queryKey: ["media-settings"] }),
+      ]);
     });
     expect(client.getQueryData<MediaDraft>(["media-draft", PROJECT_ID, CANVAS_ITEM_ID])?.version).toBe(1);
-    await user.click(screen.getByRole("button", { name: "运行" }));
+    unmount();
+    render(
+      <QueryClientProvider client={client}>
+        <MediaDraftEditor artifact={artifact} canvasItemId={CANVAS_ITEM_ID} />
+      </QueryClientProvider>,
+    );
+    const retry = await screen.findByRole("button", { name: t("imageStudio.retryAcceptance") });
+    await waitFor(() => expect(retry).toBeEnabled());
+    expect(keys).toHaveLength(1);
+    await user.click(retry);
     await waitFor(() => expect(keys).toHaveLength(2));
     expect(keys[0]).toBeTruthy();
     expect(keys[1]).toBe(keys[0]);
@@ -5872,6 +5888,87 @@ describe("MediaDraftEditor", () => {
       { canvasItemId: CANVAS_ITEM_ID, expectedDraftVersion: 0 },
       { canvasItemId: CANVAS_ITEM_ID, expectedDraftVersion: 0 },
     ]);
+  });
+
+  it("keeps the submitting card locked across remount while another card can still run", async () => {
+    let release!: () => void;
+    const receipt = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    const otherCard = "other-card";
+    const writes = vi.fn();
+    const { client, unmount } = setup({
+      handlers: [
+        http.get(`/api/v1/projects/${PROJECT_ID}/canvas-items/${otherCard}/media-draft`, () =>
+          HttpResponse.json({ ...initialDraft, canvasItemId: otherCard }),
+        ),
+        http.post(`${BASE}/run`, async () => {
+          writes();
+          await receipt;
+          return HttpResponse.json(task("READY"));
+        }),
+      ],
+    });
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "运行" }));
+    await waitFor(() => expect(writes).toHaveBeenCalledTimes(1));
+    unmount();
+    const reopened = render(
+      <QueryClientProvider client={client}>
+        <MediaDraftEditor artifact={artifact} canvasItemId={CANVAS_ITEM_ID} />
+      </QueryClientProvider>,
+    );
+    try {
+      expect(await screen.findByRole("button", { name: t("media.editor.submittingRun") })).toBeDisabled();
+      reopened.unmount();
+      render(
+        <QueryClientProvider client={client}>
+          <MediaDraftEditor artifact={artifact} canvasItemId={otherCard} />
+        </QueryClientProvider>,
+      );
+      await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+      expect(writes).toHaveBeenCalledTimes(1);
+    } finally {
+      release();
+    }
+    await waitFor(() => expect(client.isMutating()).toBe(0));
+  });
+
+  it("offers a fresh submission against the current draft after a definite conflict", async () => {
+    const keys: (string | null)[] = [];
+    const payloads: unknown[] = [];
+    let remoteVersion = 0;
+    const { client } = setup({
+      handlers: [
+        http.get(DRAFT_URL, () => HttpResponse.json({ ...initialDraft, version: remoteVersion })),
+        http.post(`${BASE}/run`, async ({ request }) => {
+          keys.push(request.headers.get("Idempotency-Key"));
+          payloads.push(await request.json());
+          remoteVersion = 1;
+          return keys.length === 1
+            ? HttpResponse.json(
+                { detail: "Draft changed", code: "CONFLICT", retryable: false },
+                {
+                  status: 409,
+                  headers: { "Content-Type": "application/problem+json" },
+                },
+              )
+            : HttpResponse.json(task("READY"));
+        }),
+      ],
+    });
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "运行" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Draft changed");
+    await waitFor(() =>
+      expect(client.getQueryData<MediaDraft>(["media-draft", PROJECT_ID, CANVAS_ITEM_ID])?.version).toBe(1),
+    );
+    await user.click(screen.getByRole("button", { name: "运行" }));
+    await waitFor(() => expect(keys).toHaveLength(2));
+    expect(keys[1]).not.toBe(keys[0]);
+    expect(payloads[1]).toMatchObject({ canvasItemId: CANVAS_ITEM_ID, expectedDraftVersion: 1 });
   });
 
   it("retries a failed initial draft read", async () => {

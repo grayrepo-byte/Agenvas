@@ -5,7 +5,10 @@ import { join } from "node:path";
 
 /** Isolated local Chromium session shared by browser evidence scripts. */
 export async function createBrowserSession({
-  chromePath = process.env.AGENVAS_E2E_CHROME ?? "/usr/bin/chromium",
+  chromePath = process.env.AGENVAS_E2E_CHROME ??
+    (process.platform === "darwin"
+      ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+      : "/usr/bin/chromium"),
   timeoutMs = 20_000,
 } = {}) {
   const profile = await mkdtemp(join(tmpdir(), "agenvas-browser-"));

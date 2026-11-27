@@ -179,6 +179,7 @@ export function PageShell({
     mutationFn: logout,
     onSuccess: () => {
       useCanvasStore.getState().clearTextGenerationDrafts();
+      useCanvasStore.getState().clearMediaRunIntents();
       useImageStudioDraftStore.getState().clear();
       useVideoStudioDraftStore.getState().clear();
       queryClient.clear();

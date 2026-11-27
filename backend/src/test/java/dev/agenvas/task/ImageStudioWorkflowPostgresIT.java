@@ -270,8 +270,9 @@ class ImageStudioWorkflowPostgresIT {
         var results = detail(mvc, owner, id).path("tasks").valueStream()
                 .map(task -> task.at("/results/0")).toList();
         UUID projectId = UUID.fromString(fixture.projectId());
-        var localFiles = results.stream().map(result ->
-                assets.get(owner.userId(), projectId, UUID.fromString(result.path("assetId").asText()))).toList();
+        var localFiles = results.stream()
+                .map(result -> assets.get(owner.userId(), projectId, UUID.fromString(result.path("assetId").asText())))
+                .toList();
         assertThat(localFiles).hasSize(2).allSatisfy(file -> {
             assertThat(file.path()).exists();
             assertThat(file.path().resolveSibling(file.asset().id() + ".thumb.png")).exists();

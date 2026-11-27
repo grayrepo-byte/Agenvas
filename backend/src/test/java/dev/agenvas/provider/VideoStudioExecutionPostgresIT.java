@@ -110,20 +110,34 @@ class VideoStudioExecutionPostgresIT {
         ARK.stop(0);
     }
 
-    @Autowired IdentityService identities;
-    @Autowired VideoStudioService studio;
-    @Autowired MediaCapabilityService catalog;
-    @Autowired MediaExecutionWorker worker;
-    @Autowired TaskService tasks;
-    @Autowired ArtifactService artifacts;
-    @Autowired AssetService assets;
-    @Autowired MediaToolRunner tools;
-    @Autowired JdbcClient jdbc;
-    @Autowired ObjectMapper mapper;
-    @Autowired WebApplicationContext web;
-    @MockitoSpyBean AssetRepository assetRows;
-    @MockitoSpyBean TaskRepository taskRows;
-    @MockitoSpyBean MockVideoAdapter mockVideo;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    VideoStudioService studio;
+    @Autowired
+    MediaCapabilityService catalog;
+    @Autowired
+    MediaExecutionWorker worker;
+    @Autowired
+    TaskService tasks;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    MediaToolRunner tools;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    ObjectMapper mapper;
+    @Autowired
+    WebApplicationContext web;
+    @MockitoSpyBean
+    AssetRepository assetRows;
+    @MockitoSpyBean
+    TaskRepository taskRows;
+    @MockitoSpyBean
+    MockVideoAdapter mockVideo;
 
     @BeforeEach
     void setup() {
@@ -218,13 +232,16 @@ class VideoStudioExecutionPostgresIT {
             switch (field) {
                 case "executionSurface" -> frozen.put(field, "CANVAS");
                 case "frameRole" -> ((ObjectNode) frozen.at("/mediaInput/images/0")).put("role", "END_FRAME");
-                case "frameVersion" -> ((ObjectNode) frozen.at("/mediaInput/images/0")).put("versionId", UUID.randomUUID().toString());
+                case "frameVersion" ->
+                    ((ObjectNode) frozen.at("/mediaInput/images/0")).put("versionId", UUID.randomUUID().toString());
                 case "gifFrame" -> {
                     var gif = new ByteArrayOutputStream();
                     ImageIO.write(new BufferedImage(40, 20, BufferedImage.TYPE_INT_RGB), "gif", gif);
-                    var asset = assets.archiveImage(owner, generation.projectId(), new ByteArrayInputStream(gif.toByteArray()));
+                    var asset = assets.archiveImage(owner, generation.projectId(),
+                            new ByteArrayInputStream(gif.toByteArray()));
                     var image = artifacts.create(owner, generation.projectId(), Artifact.Kind.IMAGE, "Injected GIF",
-                            mapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId", asset.id().toString()));
+                            mapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId",
+                                    asset.id().toString()));
                     ((ObjectNode) frozen.at("/mediaInput/images/0"))
                             .put("artifactId", image.artifact().id().toString())
                             .put("assetId", asset.id().toString())
@@ -285,8 +302,10 @@ class VideoStudioExecutionPostgresIT {
         tasks.succeedWithArtifacts(lease, "extras-worker", results, null);
         Task done = task(generation);
         assertThat(done.status()).isEqualTo(late ? Task.Status.CANCELED : Task.Status.SUCCEEDED);
-        JsonNode output = late ? mapper.readTree(jdbc.sql("select output_json::text from task_late_result where task_id=?")
-                .param(done.id()).query(String.class).single()) : done.output();
+        JsonNode output = late
+                ? mapper.readTree(jdbc.sql("select output_json::text from task_late_result where task_id=?")
+                        .param(done.id()).query(String.class).single())
+                : done.output();
         UUID artifactId = uuid(output, "artifactId");
         assertThat(output.path("selected").asBoolean()).isFalse();
         assertThat(output.path("additionalResults")).hasSize(1);
@@ -296,8 +315,10 @@ class VideoStudioExecutionPostgresIT {
         UUID primary = uuid(output, "artifactVersionId");
         UUID extraVersion = uuid(extra, "artifactVersionId");
         assertThat(extraVersion).isNotEqualTo(primary);
-        assertThat(artifacts.requireVersion(owner, lease.projectId(), artifactId, primary).content()).isEqualTo(results.getFirst().content());
-        assertThat(artifacts.requireVersion(owner, lease.projectId(), artifactId, extraVersion).content()).isEqualTo(results.getLast().content());
+        assertThat(artifacts.requireVersion(owner, lease.projectId(), artifactId, primary).content())
+                .isEqualTo(results.getFirst().content());
+        assertThat(artifacts.requireVersion(owner, lease.projectId(), artifactId, extraVersion).content())
+                .isEqualTo(results.getLast().content());
         assertThat(artifacts.get(owner, lease.projectId(), artifactId).resourceDefaultVersion()).isNull();
         assertThat(versionCount(lease.id())).isEqualTo(2);
         assertThat(attempts(lease.id())).isEqualTo(1);
@@ -394,7 +415,8 @@ class VideoStudioExecutionPostgresIT {
         Task done = task(generation);
         assertThat(done.status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(done.providerRequestId()).isEqualTo(ARK_ID);
-        assertThat(done.input().at("/mediaInput/providerParameters/aspectRatio").asText()).isEqualTo(generation.aspectRatio());
+        assertThat(done.input().at("/mediaInput/providerParameters/aspectRatio").asText())
+                .isEqualTo(generation.aspectRatio());
         assertThat(done.input().at("/mediaInput/mode").asText()).isEqualTo(generation.mode().name());
         var content = artifacts.requireVersion(owner, done.projectId(), uuid(done.output(), "artifactId"),
                 uuid(done.output(), "artifactVersionId")).content();
@@ -430,12 +452,14 @@ class VideoStudioExecutionPostgresIT {
         assertThat(create.at("/content/0/type").asText()).isEqualTo("text");
     }
 
-    private void assertFrame(JsonNode create, int index, String role, int width, int height, Color color) throws Exception {
+    private void assertFrame(JsonNode create, int index, String role, int width, int height, Color color)
+            throws Exception {
         JsonNode frame = create.path("content").get(index);
         assertThat(frame.path("role").asText()).isEqualTo(role);
         String url = frame.at("/image_url/url").asText();
         assertThat(url).startsWith("data:image/png;base64,");
-        var image = ImageIO.read(new ByteArrayInputStream(Base64.getDecoder().decode(url.substring(url.indexOf(',') + 1))));
+        var image = ImageIO
+                .read(new ByteArrayInputStream(Base64.getDecoder().decode(url.substring(url.indexOf(',') + 1))));
         assertThat(image.getWidth()).isEqualTo(width);
         assertThat(image.getHeight()).isEqualTo(height);
         assertThat(image.getRGB(width / 2, height / 2)).isEqualTo(color.getRGB());
@@ -448,8 +472,10 @@ class VideoStudioExecutionPostgresIT {
 
     private GenerationView accept(VideoStudioService.Capability capability, VideoInputMode mode,
             String ratio, UUID start, UUID end) {
-        return studio.accept(owner, new VideoStudioService.Command(capability.capabilityId(), capability.capabilityVersion(),
-                "Animate the synthetic scene", mode, 4, ratio, start, end, List.of(), null, mapper.createObjectNode()),
+        return studio.accept(owner,
+                new VideoStudioService.Command(capability.capabilityId(), capability.capabilityVersion(),
+                        "Animate the synthetic scene", mode, 4, ratio, start, end, List.of(), null,
+                        mapper.createObjectNode()),
                 UUID.randomUUID().toString());
     }
 
@@ -466,7 +492,8 @@ class VideoStudioExecutionPostgresIT {
     }
 
     private int attempts(UUID taskId) {
-        return jdbc.sql("select count(*) from provider_attempt where task_id=?").param(taskId).query(Integer.class).single();
+        return jdbc.sql("select count(*) from provider_attempt where task_id=?").param(taskId).query(Integer.class)
+                .single();
     }
 
     private int versionCount(UUID taskId) {
@@ -480,8 +507,10 @@ class VideoStudioExecutionPostgresIT {
     }
 
     private void noCanvas(UUID projectId) {
-        assertThat(jdbc.sql("select count(*) from canvas_item where project_id=?").param(projectId).query(Integer.class).single()).isZero();
-        assertThat(jdbc.sql("select count(*) from agent_run where project_id=?").param(projectId).query(Integer.class).single()).isZero();
+        assertThat(jdbc.sql("select count(*) from canvas_item where project_id=?").param(projectId).query(Integer.class)
+                .single()).isZero();
+        assertThat(jdbc.sql("select count(*) from agent_run where project_id=?").param(projectId).query(Integer.class)
+                .single()).isZero();
     }
 
     private ByteArrayInputStream png(Color color) throws IOException {
@@ -515,7 +544,8 @@ class VideoStudioExecutionPostgresIT {
 
     private ObjectNode archivedResult(Task lease, int frequency) throws IOException {
         byte[] bytes = video(frequency);
-        var archived = assets.archiveTaskVideo(owner, lease.projectId(), UUID.randomUUID(), () -> new ByteArrayInputStream(bytes));
+        var archived = assets.archiveTaskVideo(owner, lease.projectId(), UUID.randomUUID(),
+                () -> new ByteArrayInputStream(bytes));
         ObjectNode content = mapper.createObjectNode().put("assetId", archived.id().toString())
                 .put("sourceTaskId", lease.id().toString()).put("workflowVersion", "synthetic")
                 .put("prompt", "Synthetic additional/late result");
@@ -532,7 +562,8 @@ class VideoStudioExecutionPostgresIT {
                     if (UNCERTAIN.get())
                         reply(exchange, 503, "application/json", "{}".getBytes(StandardCharsets.UTF_8));
                     else
-                        reply(exchange, 200, "application/json", ("{\"id\":\"" + ARK_ID + "\"}").getBytes(StandardCharsets.UTF_8));
+                        reply(exchange, 200, "application/json",
+                                ("{\"id\":\"" + ARK_ID + "\"}").getBytes(StandardCharsets.UTF_8));
                 } else {
                     QUERIES.add(exchange.getRequestURI().getPath());
                     String url = "http://127.0.0.1:" + server.getAddress().getPort()

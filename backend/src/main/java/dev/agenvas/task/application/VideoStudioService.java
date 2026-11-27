@@ -67,7 +67,8 @@ public class VideoStudioService {
             boolean requiresEndFrame, Integer minDurationSeconds, Integer maxDurationSeconds,
             Integer defaultDurationSeconds, List<String> aspectRatios, String defaultAspectRatio,
             List<String> videoResolutions, String defaultVideoResolution, ReferenceLimits referenceLimits,
-            List<JsonNode> fields, JsonNode defaultDynamicValues) {}
+            List<JsonNode> fields, JsonNode defaultDynamicValues) {
+    }
 
     public record ReferenceLimits(int image, int video, int audio) {
         int forKind(Asset.MediaKind kind) {
@@ -79,15 +80,19 @@ public class VideoStudioService {
         }
     }
 
-    public record Context(UUID projectId, UUID defaultCapabilityId, List<Capability> capabilities) {}
+    public record Context(UUID projectId, UUID defaultCapabilityId, List<Capability> capabilities) {
+    }
 
     public record Command(UUID capabilityId, int capabilityVersion, String prompt, VideoInputMode mode,
             Integer durationSeconds, String aspectRatio, UUID startFrameVersionId, UUID endFrameVersionId,
-            List<ReferenceInput> references, String videoResolution, JsonNode dynamicValues) {}
+            List<ReferenceInput> references, String videoResolution, JsonNode dynamicValues) {
+    }
 
-    public record ReferenceInput(Asset.MediaKind kind, UUID versionId, String fieldKey) {}
+    public record ReferenceInput(Asset.MediaKind kind, UUID versionId, String fieldKey) {
+    }
 
-    public record Frame(UUID artifactId, UUID versionId, UUID assetId, UUID projectId, Integer width, Integer height) {}
+    public record Frame(UUID artifactId, UUID versionId, UUID assetId, UUID projectId, Integer width, Integer height) {
+    }
 
     public record ReferenceAsset(UUID artifactId, UUID versionId, UUID assetId, UUID projectId, Asset.MediaKind kind,
             String fieldKey, Integer width, Integer height, Integer durationMs, String contentType) {
@@ -101,16 +106,20 @@ public class VideoStudioService {
     }
 
     public record Result(UUID artifactId, UUID artifactVersionId, UUID assetId, Integer width, Integer height,
-            Integer durationMs, String contentType) {}
+            Integer durationMs, String contentType) {
+    }
 
-    public record TaskView(UUID id, Task.Status status, long version, String errorCode, List<Result> results) {}
+    public record TaskView(UUID id, Task.Status status, long version, String errorCode, List<Result> results) {
+    }
 
     public record GenerationView(UUID id, UUID projectId, UUID capabilityId, int capabilityVersion, String prompt,
             VideoInputMode mode, Integer durationSeconds, String aspectRatio, Frame startFrame, Frame endFrame,
             List<ReferenceAsset> references, String videoResolution, JsonNode dynamicValues,
-            Instant createdAt, TaskView task) {}
+            Instant createdAt, TaskView task) {
+    }
 
-    public record GenerationPage(List<GenerationView> items, String nextCursor) {}
+    public record GenerationPage(List<GenerationView> items, String nextCursor) {
+    }
 
     public Context context(UUID owner) {
         return inputs.context(owner);
@@ -129,7 +138,8 @@ public class VideoStudioService {
         if (key == null || key.isBlank() || key.length() > 160 || command.capabilityId() == null
                 || command.capabilityVersion() < 1 || command.prompt() == null || command.prompt().length() > 8000
                 || command.mode() == null || command.durationSeconds() != null && command.durationSeconds() < 1
-                || command.references().size() > VideoStudioInputs.MAX_REFERENCES || !command.dynamicValues().isObject())
+                || command.references().size() > VideoStudioInputs.MAX_REFERENCES
+                || !command.dynamicValues().isObject())
             throw VideoStudioInputs.invalid();
         String commandKey = key.strip();
         ObjectNode request = mapper.valueToTree(command);
@@ -281,7 +291,8 @@ public class VideoStudioService {
         var version = artifacts.requireMediaVersionForTask(owner, project, id, Artifact.Kind.VIDEO);
         if (!item.artifactId().equals(version.artifactId().toString()))
             throw new IllegalStateException("Mismatched video Studio archive identity");
-        Asset asset = assets.requireReadyMedia(owner, project, UUID.fromString(version.content().path("assetId").asText()),
+        Asset asset = assets.requireReadyMedia(owner, project,
+                UUID.fromString(version.content().path("assetId").asText()),
                 Asset.MediaKind.VIDEO);
         results.add(new Result(version.artifactId(), id, asset.id(), asset.width(), asset.height(), asset.durationMs(),
                 asset.contentType()));
@@ -293,7 +304,8 @@ public class VideoStudioService {
     }
 
     private static ApiProblemException notFound() {
-        return new ApiProblemException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", ApiMessage.of("api.video-studio.title"),
+        return new ApiProblemException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND",
+                ApiMessage.of("api.video-studio.title"),
                 ApiMessage.of("api.video-studio.not-found"), false);
     }
 }

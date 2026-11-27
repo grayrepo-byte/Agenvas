@@ -118,6 +118,20 @@
 - **THEN** 工作台先显示实际保存张数和已有图片的可用性，技术错误码只在详情中呈现
 - **AND** 不自动重新生成；受理未确认时的核对仅复用原始请求
 
+### Requirement: Scope pending studio commands to the current session
+
+生图工作台 MUST 将未完成的生成和参考图上传绑定到发起操作的登录会话。
+
+#### Scenario: Return while a reference is uploading
+
+- **WHEN** 用户上传参考图后切换页面，并在同一会话返回工作台
+- **THEN** 上传完成前生成按钮保持禁用，上传成功后参考图回到原草稿
+
+#### Scenario: Receive a response after signing in again
+
+- **WHEN** 用户退出并重新登录，上一会话的生成或上传请求随后返回
+- **THEN** 新会话保留自己的草稿、参考图和待确认命令
+
 ### Requirement: Identify desktop history before opening a batch
 
 桌面历史卡片 MUST 在用户打开记录前提供可见的批次摘要。

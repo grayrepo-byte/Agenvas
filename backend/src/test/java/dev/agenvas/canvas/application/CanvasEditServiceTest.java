@@ -167,6 +167,18 @@ class CanvasEditServiceTest {
         verifyNoInteractions(copies);
     }
     @Test
+    void displayEditOnALockedCardComparesGeometryAtTheStoredPrecision() {
+        CanvasItem locked = item(0, true);
+        rows.put(id, locked);
+        var rename = new ItemChange(id, 0, "Renamed", new BigDecimal("0.00049"), locked.y(),
+                locked.width(), locked.height(), locked.zIndex(), locked.groupId(), true);
+        service.edit(owner, project, new Edit(UUID.randomUUID(), Operation.DISPLAY, List.of(rename),
+                List.of(), List.of()));
+        assertThat(rows.get(id).x()).isEqualByComparingTo("0.000");
+        assertThat(rows.get(id).title()).isEqualTo("Renamed");
+    }
+
+    @Test
     void groupNameCountsUnicodeCodePointsAndRejectsBlankOrExcess() {
         assertThat(CanvasEditService.normalizeGroupName(" 😀 ")).isEqualTo("😀");
         assertThat(CanvasEditService.normalizeGroupName("😀".repeat(80))).hasSize(160);

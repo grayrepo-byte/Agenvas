@@ -1,6 +1,8 @@
 package dev.agenvas.event.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -14,6 +16,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
@@ -50,6 +53,42 @@ class ProjectEventHubTest {
                 hub.stop();
             }
         } finally {
+            meters.close();
+        }
+    }
+
+    @Test
+    void reconnectDuringPageReadReplaysFromItsOwnCursorOnTheNextPoll() throws Exception {
+        ProjectEventService events = mock(ProjectEventService.class);
+        UUID owner = UUID.randomUUID();
+        UUID project = UUID.randomUUID();
+        ObjectMapper mapper = new ObjectMapper();
+        var history = java.util.stream.LongStream.rangeClosed(3, 6).mapToObj(seq -> event(project, seq, mapper))
+                .toList();
+        when(events.replayWindow(owner, project)).thenReturn(new ProjectEventService.ReplayWindow(6, 3L));
+        var cursors = new CopyOnWriteArrayList<Long>();
+        var thirdRead = new CountDownLatch(1);
+        SimpleMeterRegistry meters = new SimpleMeterRegistry();
+        ProjectEventHub hub = new ProjectEventHub(events, Clock.systemUTC(), SSE, meters);
+        try {
+            when(events.listAfter(eq(owner), eq(project), anyLong(), eq(64))).thenAnswer(call -> {
+                long cursor = call.getArgument(2);
+                cursors.add(cursor);
+                if (cursors.size() == 1)
+                    hub.subscribe(owner, project, 2); // The in-flight page starts after 5.
+                if (cursors.size() < 3)
+                    hub.onCommitted(new ProjectEventCommitted(project));
+                else
+                    thirdRead.countDown();
+                return history.stream().filter(event -> event.seq() > cursor).toList();
+            });
+            hub.subscribe(owner, project, 5);
+            hub.onCommitted(new ProjectEventCommitted(project));
+            assertThat(thirdRead.await(3, TimeUnit.SECONDS)).isTrue();
+            assertThat(cursors).containsExactly(5L, 2L, 6L);
+            assertThat(meters.get("agenvas.sse.connections.active").gauge().value()).isEqualTo(2);
+        } finally {
+            hub.stop();
             meters.close();
         }
     }

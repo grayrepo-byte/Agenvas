@@ -1009,8 +1009,8 @@ public class TaskService {
                     throw new IllegalArgumentException("Contradictory video Studio task snapshot");
                 }
                 projects.requireVideoStudioScope(ownerId, task.projectId());
-                if (artifacts.getTaskResultTarget(ownerId, task.projectId(), target.artifactId()).kind()
-                        != Artifact.Kind.VIDEO) {
+                if (artifacts.getTaskResultTarget(ownerId, task.projectId(), target.artifactId())
+                        .kind() != Artifact.Kind.VIDEO) {
                     throw new IllegalArgumentException("Video Studio task target is not a video");
                 }
             } catch (IllegalArgumentException | ApiProblemException invalid) {
@@ -1043,7 +1043,8 @@ public class TaskService {
                 || input.path("schemaVersion").intValue() != 7
                 || (hasDuration
                         ? !seconds.isIntegralNumber() || !seconds.canConvertToInt()
-                                || seconds.intValue() < 1 || seconds.intValue() > (originalAdapters ? 30
+                                || seconds.intValue() < 1 || seconds.intValue() > (originalAdapters
+                                        ? 30
                                         : MediaAdapterRegistry.RUNNINGHUB_MAX_VIDEO_SECONDS)
                                 || !seconds.equals(mediaSeconds)
                         : originalAdapters || media.hasNonNull("durationSeconds"))
@@ -1138,7 +1139,8 @@ public class TaskService {
             var version = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(), artifactId,
                     null, target.expectedCurrentVersionId(), target.expectedArtifactVersion(), extra.content(),
                     lease.input().path("mediaInput"), false);
-            ObjectNode entry = output.addObject().put("ordinal", extra.ordinal()).put("artifactId", artifactId.toString())
+            ObjectNode entry = output.addObject().put("ordinal", extra.ordinal())
+                    .put("artifactId", artifactId.toString())
                     .put("artifactVersionId", version.versionId().toString()).put("selected", false);
             if (companion != null)
                 entry.put("kind", extra.kind().name());
@@ -1785,8 +1787,10 @@ public class TaskService {
                 JsonNode frozen = input.path("mediaInput");
                 if (video)
                     return studioVersionsCurrent(ownerId, task.projectId(), frozen.path("images"), Artifact.Kind.IMAGE)
-                            && studioVersionsCurrent(ownerId, task.projectId(), frozen.path("videos"), Artifact.Kind.VIDEO)
-                            && studioVersionsCurrent(ownerId, task.projectId(), frozen.path("audios"), Artifact.Kind.AUDIO);
+                            && studioVersionsCurrent(ownerId, task.projectId(), frozen.path("videos"),
+                                    Artifact.Kind.VIDEO)
+                            && studioVersionsCurrent(ownerId, task.projectId(), frozen.path("audios"),
+                                    Artifact.Kind.AUDIO);
                 JsonNode images = frozen.path("images");
                 if (!images.isArray() || !frozen.path("audios").isArray() || !frozen.path("videos").isArray()
                         || !frozen.path("audios").isEmpty() || !frozen.path("videos").isEmpty())

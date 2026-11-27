@@ -18,7 +18,8 @@ import {
   VideoCamera,
   X,
 } from "@/shared/ui/icons";
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useMutationState, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCanvasStore, type MediaRunIntent } from "./canvasStore";
 import type { CSSProperties, FormEvent } from "react";
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
@@ -220,7 +221,6 @@ const VIDEO_MODE_OPTIONS = [
 ] as const;
 type Popover =
   "models" | "modes" | "parameters" | "assetReferences" | "canvasReferences" | "libraryReferences" | "voices";
-type RunIntent = { key: string; expectedDraftVersion: number };
 type UploadProgress = { assetId?: string; createKey: string };
 type AssetReferenceCommit = {
   fieldsAtStart: DraftFields;
@@ -408,7 +408,14 @@ export function MediaDraftEditor({
   });
   const [failedRemovalVersionId, setFailedRemovalVersionId] = useState<string | null>(null);
   const draggedReferenceIndex = useRef<number | null>(null);
-  const runIntent = useRef<RunIntent | null>(null);
+  const runScope = `${artifact.projectId}:${canvasItemId}:${artifact.id}`;
+  const runIntent = useCanvasStore(state => state.mediaRunIntents[runScope]);
+  const runKey = ["direct-media-generation", artifact.projectId, canvasItemId, artifact.id] as const;
+  const submissions = useMutationState({
+    filters: { mutationKey: runKey, exact: true },
+    select: mutation => mutation.state,
+  });
+  const submitting = submissions.some(submission => submission.status === "pending");
   const [libraryBusy, setLibraryBusy] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
@@ -612,6 +619,7 @@ export function MediaDraftEditor({
       const changedWhileSaving = latest !== null && latest !== input.fieldsAtStart;
       const next = changedWhileSaving ? { ...latest, mediaInputs: input.nextFields.mediaInputs } : input.nextFields;
       session.acceptSaved(saved, { fields: next, dirty: changedWhileSaving, error: null });
+      discardRunIntent();
       setAssetSelection([]);
       setAssetSelectionError(null);
       setPopover(null);
@@ -678,6 +686,7 @@ export function MediaDraftEditor({
         changedWhileRemoving = true;
       }
       session.acceptSaved(saved, { fields: next, dirty: changedWhileRemoving });
+      discardRunIntent();
       setFailedRemovalVersionId(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["canvas", artifact.projectId] }),
@@ -691,20 +700,16 @@ export function MediaDraftEditor({
     onSettled: (_saved, failure, _input, context) => context?.finishWrite(failure),
   });
   const run = useMutation({
-    mutationFn: () => {
-      if (expectedVersion === null) throw new Error(t("media.editor.waitForDraft"));
-      // A lost response may still have advanced the server draft. Retrying that submission
-      // must replay its exact payload, even when SSE/refetch has supplied a newer CAS version.
-      runIntent.current ??= { key: createClientId(), expectedDraftVersion: expectedVersion };
-      return runMediaDraft(
+    mutationKey: runKey,
+    mutationFn: (intent: MediaRunIntent) =>
+      runMediaDraft(
         artifact.projectId,
         artifact.id,
-        { canvasItemId, expectedDraftVersion: runIntent.current.expectedDraftVersion },
-        runIntent.current.key,
-      );
-    },
-    onSuccess: async () => {
-      runIntent.current = null;
+        { canvasItemId, expectedDraftVersion: intent.expectedDraftVersion },
+        intent.key,
+      ),
+    onSuccess: async (_task, intent) => {
+      useCanvasStore.getState().clearMediaRunIntent(runScope, intent);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: tasksKey }),
         queryClient.invalidateQueries({ queryKey: ["snapshot", artifact.projectId] }),
@@ -713,11 +718,47 @@ export function MediaDraftEditor({
         queryClient.invalidateQueries({ queryKey: key }),
       ]);
     },
+    onError: (failure, intent) => {
+      // A definitive rejection releases the frozen request. Network loss keeps it available for explicit replay.
+      if (
+        failure instanceof ApiError &&
+        failure.status >= 400 &&
+        failure.status < HTTP_STATUS.INTERNAL_SERVER_ERROR &&
+        failure.status !== 408 &&
+        failure.status !== HTTP_STATUS.TOO_MANY_REQUESTS
+      ) {
+        useCanvasStore.getState().clearMediaRunIntent(runScope, intent);
+        if (failure.status === HTTP_STATUS.CONFLICT) void queryClient.invalidateQueries({ queryKey: key });
+      }
+    },
   });
+  const runError = runIntent
+    ? submissions.findLast(submission => submission.variables === runIntent)?.error
+    : run.error;
+  const runLabel = submitting
+    ? t("media.editor.submittingRun")
+    : runIntent
+      ? t("imageStudio.retryAcceptance")
+      : t("media.editor.run");
+
+  function discardRunIntent() {
+    if (runIntent) useCanvasStore.getState().clearMediaRunIntent(runScope, runIntent);
+    if (!submitting) run.reset();
+  }
+
+  function submitRun() {
+    if (expectedVersion === null || queryClient.isMutating({ mutationKey: runKey, exact: true })) return;
+    // Until a receipt or explicit edit, reopening the card must replay the same CAS version and key.
+    const store = useCanvasStore.getState();
+    if (store.mediaRunIntents[runScope] !== runIntent) return;
+    const intent = runIntent ?? { key: createClientId(), expectedDraftVersion: expectedVersion };
+    if (!runIntent) store.setMediaRunIntent(runScope, intent);
+    run.mutate(intent);
+  }
   // Card-scoped history includes approved Agent work. Active requests lock edits
   // through local archival; unresolved direct requests allow an explicit new generation.
   const editorReadOnly =
-    !isAudio && (run.isPending || !directTasks.isSuccess || Boolean(directTasks.data?.some(isMediaTaskRunning)));
+    !isAudio && (submitting || !directTasks.isSuccess || Boolean(directTasks.data?.some(isMediaTaskRunning)));
   useEffect(() => {
     if (!editorReadOnly) return;
     setPopover(null);
@@ -737,7 +778,12 @@ export function MediaDraftEditor({
 
   useMediaDraftSessionLifecycle(session, artifact.kind, {
     readOnly: editorReadOnly,
-    refreshBlocked: commitAssetReferences.isPending || libraryBusy || templateBusy || characterOpen || run.isPending,
+    refreshBlocked:
+      commitAssetReferences.isPending ||
+      libraryBusy ||
+      templateBusy ||
+      characterOpen ||
+      (submitting && fields !== null),
     autosaveBlocked:
       commitAssetReferences.isPending ||
       removeConnectedInput.isPending ||
@@ -757,8 +803,8 @@ export function MediaDraftEditor({
       dirty ||
       save.isPending ||
       error ||
-      run.isPending ||
-      runIntent.current ||
+      submitting ||
+      runIntent ||
       commitAssetReferences.isPending ||
       removeConnectedInput.isPending ||
       templateBusy
@@ -798,15 +844,15 @@ export function MediaDraftEditor({
     save.isPending,
     templateBusy,
     error,
-    run.isPending,
+    submitting,
+    runIntent,
     editorReadOnly,
   ]);
 
   function edit(changes: Partial<DraftFields>) {
     if (session.isReadOnly()) return;
     setSubmissionTipOpen(false);
-    runIntent.current = null;
-    if (!run.isPending) run.reset();
+    discardRunIntent();
     session.edit(current => ({
       ...current,
       ...(workflow && chosenCapability ? { capabilityId: chosenCapability.id } : {}),
@@ -1237,18 +1283,19 @@ export function MediaDraftEditor({
     !removeConnectedInput.isPending &&
     !libraryBusy &&
     !error &&
-    !run.isPending &&
+    !submitting &&
     !templateBusy &&
     !uploading &&
     !workflowUploading &&
     directTasks.isSuccess &&
-    settings.isSuccess &&
-    Boolean(chosenCapability) &&
     !occupied &&
-    styleAvailable &&
-    !historyPending &&
-    !promptInputsLoading &&
-    !promptInputsError;
+    (Boolean(runIntent) ||
+      (settings.isSuccess &&
+        Boolean(chosenCapability) &&
+        styleAvailable &&
+        !historyPending &&
+        !promptInputsLoading &&
+        !promptInputsError));
   const dimensionLabel =
     artifact.kind === "IMAGE"
       ? `${ASPECT_RATIO_LABELS[imageParameters.aspectRatio]} · ${imageParameters.resolution}`
@@ -1735,8 +1782,7 @@ export function MediaDraftEditor({
         expectedVersion: acknowledgedVersion,
       });
       session.acceptSaved(acknowledged);
-      runIntent.current = null;
-      if (!run.isPending) run.reset();
+      discardRunIntent();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["canvas", artifact.projectId] }),
         queryClient.invalidateQueries({ queryKey: ["canvas-connections", artifact.projectId] }),
@@ -1790,7 +1836,7 @@ export function MediaDraftEditor({
               !latest ||
               session.isReadOnly() ||
               cameraPresetsBusy ||
-              run.isPending ||
+              submitting ||
               !decoded ||
               decoded.prompt.length > (promptField?.maxLength ?? MAX_PROMPT_LENGTH) ||
               JSON.stringify(latest) !== optimizationSource.fingerprint
@@ -1811,7 +1857,7 @@ export function MediaDraftEditor({
           prompt={fields.prompt}
           composePrompt={composeLinkedPrompt}
           durationSeconds={duration}
-          disabled={editorReadOnly || run.isPending}
+          disabled={editorReadOnly || submitting}
           onChange={changeDynamicField}
         />
       ) : null}
@@ -1823,7 +1869,7 @@ export function MediaDraftEditor({
               variant="ghost"
               className="media-draft-tab"
               type="button"
-              disabled={cameraPresetsBusy || editorReadOnly || run.isPending}
+              disabled={cameraPresetsBusy || editorReadOnly || submitting}
               onClick={() => {
                 setPopover(null);
                 setReferenceSourcesOpen(false);
@@ -1848,7 +1894,7 @@ export function MediaDraftEditor({
               disabled={
                 cameraPresetsBusy ||
                 editorReadOnly ||
-                run.isPending ||
+                submitting ||
                 !displayedPrompt.trim() ||
                 encodeOptimizationPrompt(displayedPrompt, displayedPrompt === fields.prompt ? fields.mentions : []) ===
                   null
@@ -1874,7 +1920,7 @@ export function MediaDraftEditor({
             variant="ghost"
             className="media-draft-tab"
             type="button"
-            disabled={characterBusy || templateBusy || libraryBusy || run.isPending}
+            disabled={characterBusy || templateBusy || libraryBusy || submitting}
             onClick={() => {
               setPopover(null);
               setReferenceSourcesOpen(false);
@@ -1892,7 +1938,7 @@ export function MediaDraftEditor({
                 !promptEnabled ||
                 templateBusy ||
                 save.isPending ||
-                run.isPending ||
+                submitting ||
                 commitAssetReferences.isPending ||
                 removeConnectedInput.isPending ||
                 libraryBusy ||
@@ -2128,7 +2174,7 @@ export function MediaDraftEditor({
                 thumbnailUrl:
                   choice.kind === "AUDIO" ? undefined : assetThumbnailUrl(artifact.projectId, choice.assetId),
               }))}
-              disabled={editorReadOnly || run.isPending || removeConnectedInput.isPending || libraryBusy}
+              disabled={editorReadOnly || submitting || removeConnectedInput.isPending || libraryBusy}
               catalogEnabled={!isAudio}
               libraryDisabled={save.isPending || expectedVersion === null || workflowUploading}
               pickerOpen={Boolean(popover)}
@@ -2234,6 +2280,7 @@ export function MediaDraftEditor({
                       };
                   }
                   session.acceptSaved(saved, { fields: next, dirty: changed, error: null });
+                  discardRunIntent();
                   setPopover(null);
                   void queryClient.invalidateQueries({ queryKey: ["artifacts", artifact.projectId] });
                 }}
@@ -3053,21 +3100,21 @@ export function MediaDraftEditor({
                 className="media-draft-run"
                 type="button"
                 disabled={!canSubmit}
-                aria-label={run.isPending ? t("media.editor.submittingRun") : t("media.editor.run")}
-                title={occupied ? t("media.editor.activeTaskHint") : t("media.editor.run")}
+                aria-label={runLabel}
+                title={occupied ? t("media.editor.activeTaskHint") : runLabel}
                 onClick={() => {
                   if (!canSubmit) return;
-                  if (validationMessages.length > 0) {
+                  if (!runIntent && validationMessages.length > 0) {
                     setSubmissionTipOpen(true);
                     return;
                   }
                   setSubmissionTipOpen(false);
-                  run.mutate();
+                  submitRun();
                 }}
               >
                 <span>
-                  {run.isPending
-                    ? t("media.editor.submittingRun")
+                  {submitting || runIntent
+                    ? runLabel
                     : artifact.kind === "IMAGE"
                       ? t("canvas.studio.generateImage")
                       : artifact.kind === "AUDIO"
@@ -3186,11 +3233,9 @@ export function MediaDraftEditor({
             {t("media.editor.referenceUploadFailed", { "0": uploadError.message })}
           </EditorFeedbackRow>
         ) : null}
-        {run.isPending ? (
-          <EditorFeedbackRow tone="loading">{t("media.editor.submittingTask")}</EditorFeedbackRow>
-        ) : null}
-        {run.error ? (
-          <EditorFeedbackRow tone="danger">{t("media.editor.runFailed", { "0": run.error.message })}</EditorFeedbackRow>
+        {submitting ? <EditorFeedbackRow tone="loading">{t("media.editor.submittingTask")}</EditorFeedbackRow> : null}
+        {runError ? (
+          <EditorFeedbackRow tone="danger">{t("media.editor.runFailed", { "0": runError.message })}</EditorFeedbackRow>
         ) : null}
         {directTasks.isPending ? (
           <EditorFeedbackRow tone="loading">{t("media.editor.taskChecking")}</EditorFeedbackRow>

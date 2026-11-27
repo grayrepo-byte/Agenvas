@@ -28,7 +28,7 @@ function mockUpload(response = Response.json({ id: "uploaded-asset" })) {
       Promise.resolve(
         path === "/api/v1/auth/csrf"
           ? Response.json({ token: "synthetic-csrf", headerName: "X-CSRF-TOKEN" })
-          : response,
+          : response.clone(),
       ),
     );
 }
@@ -110,5 +110,45 @@ describe("session-protected multipart uploads", () => {
     expect(new Headers(init?.headers).get("Content-Type")).toBe("application/json");
     expect(new Headers(init?.headers).get("X-CSRF-TOKEN")).toBe("synthetic-csrf");
     expect(JSON.parse(init?.body as string)).toEqual({ name: "Synthetic project", aspectRatio: "LANDSCAPE_16_9" });
+  });
+});
+
+describe("session token rotation", () => {
+  const project = { name: "Synthetic project", aspectRatio: "LANDSCAPE_16_9" } as const;
+
+  it("shares the first token read between concurrent writes", async () => {
+    const fetch = mockUpload();
+    await Promise.all([client.createProject(project), client.createProject(project)]);
+    expect(fetch.mock.calls.filter(([url]) => url === "/api/v1/auth/csrf")).toHaveLength(1);
+  });
+
+  it("allows an explicit retry after a stale token without replaying the rejected command", async () => {
+    let reads = 0;
+    const tokens: (string | null)[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (path, init) => {
+      if (path === "/api/v1/auth/csrf") return Response.json({ headerName: "X-CSRF-TOKEN", token: String(++reads) });
+      tokens.push(new Headers(init?.headers).get("X-CSRF-TOKEN"));
+      return tokens.length === 2 ? new Response(null, { status: 403 }) : Response.json({ id: "project" });
+    });
+    await client.createProject(project);
+    await expect(client.createProject(project)).rejects.toMatchObject({ status: 403 });
+    expect(tokens).toEqual(["1", "1"]);
+    await client.createProject(project);
+    expect(tokens).toEqual(["1", "1", "2"]);
+  });
+
+  it("gets a fresh token before login after the browser session changed elsewhere", async () => {
+    let reads = 0;
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async path =>
+        path === "/api/v1/auth/csrf"
+          ? Response.json({ headerName: "X-CSRF-TOKEN", token: String(++reads) })
+          : Response.json({ id: "success" }),
+      );
+    await client.createProject(project);
+    await client.login({ loginName: "artist", password: "synthetic" });
+    const loginCall = fetch.mock.calls.find(([url]) => url === "/api/v1/auth/login");
+    expect(new Headers(loginCall?.[1]?.headers).get("X-CSRF-TOKEN")).toBe("2");
   });
 });

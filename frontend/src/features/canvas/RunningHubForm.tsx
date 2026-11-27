@@ -92,7 +92,6 @@ export function RunningHubForm({
   disabled = false,
   onChange,
   onUpload,
-  uploadOnlyMedia = false,
 }: {
   definition: CreatorInputDefinition;
   values: Record<string, WorkflowValue>;
@@ -102,7 +101,6 @@ export function RunningHubForm({
   disabled?: boolean;
   onChange: (key: string, value: WorkflowValue | undefined) => void;
   onUpload?: (field: CreatorInputField, file: File) => Promise<void>;
-  uploadOnlyMedia?: boolean;
 }) {
   useLocale();
   const formId = useId();
@@ -110,9 +108,6 @@ export function RunningHubForm({
   function control(field: CreatorInputField) {
     const value = effectiveValues[field.key];
     const isMedia = isWorkflowMediaField(field);
-    // Studio assigns the uploaded file to the slot; remove it from the reference list.
-    if (isMedia && uploadOnlyMedia && onUpload)
-      return <UploadSlot key={field.key} field={field} disabled={disabled} onUpload={onUpload} />;
     const { minimum, maximum } = workflowNumericBounds(field);
     const inputId = `${formId}-${field.key}`;
     const controlProps = { id: inputId, disabled };

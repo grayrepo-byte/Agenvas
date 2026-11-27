@@ -8,7 +8,8 @@ import tools.jackson.databind.JsonNode;
 
 public interface VideoStudioRepository {
     record Generation(UUID id, UUID ownerId, UUID projectId, UUID taskId, String commandKey, String requestHash,
-            JsonNode request, Instant createdAt) {}
+            JsonNode request, Instant createdAt) {
+    }
 
     void create(Generation generation);
 

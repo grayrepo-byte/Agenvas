@@ -3,6 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, matchRoutes, useLocation } from "react-router";
 import { useVideoStudioDraftStore } from "../features/video-studio/videoStudioDraft";
+import { useImageStudioDraftStore } from "../features/image-studio/imageStudioDraft";
 import { createQueryClient } from "./queryClient";
 import { PageErrorBoundary } from "./PageErrorBoundary";
 import { LoadingState } from "../shared/ui/LoadingState";
@@ -69,7 +70,10 @@ function RouteQueryScope() {
   const location = useLocation();
   const authentication = matchRoutes([{ path: "/login" }, { path: "/setup" }], location) !== null;
   useEffect(() => {
-    if (authentication) useVideoStudioDraftStore.getState().clear();
+    if (authentication) {
+      useVideoStudioDraftStore.getState().clear();
+      useImageStudioDraftStore.getState().clear();
+    }
   }, [authentication]);
   return <QueryScopedRoutes key={authentication ? "auth" : "workspace"} />;
 }

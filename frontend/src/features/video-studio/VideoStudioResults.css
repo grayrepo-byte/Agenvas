@@ -5,58 +5,252 @@
   width: 100%;
   min-width: 0;
   overflow-wrap: anywhere;
+  container: video-result / inline-size;
+}
+
+.video-studio-results[data-has-video="false"] {
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-3) var(--ui-space-4);
+  border: 1px solid var(--ui-photo-rule);
+  border-radius: var(--ui-radius-lg);
+  background: color-mix(in srgb, var(--ui-photo-composer) 40%, transparent);
 }
 
 .video-studio-result-header,
-.video-studio-result-actions {
+.video-studio-result-actions,
+.video-studio-result-footer {
   display: flex;
+  min-width: 0;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--ui-space-2);
 }
 
-.video-studio-result-header h2 {
+.video-studio-results h2 {
   margin: 0;
-  font-size: var(--ui-text-sm);
+  color: var(--ui-text);
+  font-size: var(--ui-text-md);
   font-weight: 600;
+  line-height: 1.4;
+}
+
+.video-studio-result-header h2 {
+  margin-inline-end: var(--ui-space-1);
+}
+
+.video-studio-result-specs,
+.video-studio-result-saved,
+.video-studio-result-footer > span {
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
 }
 
 .video-studio-result-saved {
-  color: var(--ui-text-secondary);
-  font-size: var(--ui-text-xs);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ui-space-1);
 }
 
-.video-studio-result-placeholder {
-  display: grid;
-  place-items: center;
-  min-height: min(32vh, 16rem);
-  border: 1px dashed var(--ui-border);
-  border-radius: var(--ui-radius-lg);
+.video-studio-result-saved svg {
+  width: 16px;
+  height: 16px;
+  color: var(--ui-success);
+}
+
+.video-studio-result-specs {
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
 }
 
 .video-studio-result-select {
+  width: fit-content;
   max-width: 100%;
-  align-self: flex-start;
+}
+
+.video-studio-status-restore {
+  max-width: 100%;
+  margin-inline-start: auto;
+}
+
+.video-studio-pending-prompt {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--ui-text-secondary);
+  font-size: var(--ui-text-md);
+  line-height: 1.5;
+}
+
+.video-studio-result-empty[data-slot="empty"] {
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: var(--ui-space-4);
+  padding: var(--ui-space-4) var(--ui-space-5);
+  border: 1px solid var(--ui-photo-rule);
+  background: color-mix(in srgb, var(--ui-photo-composer) 40%, transparent);
+  text-align: start;
+}
+
+.video-studio-result-empty [data-slot="empty-header"] {
+  align-items: flex-start;
+  gap: var(--ui-space-1);
+  max-width: none;
+  text-align: start;
+}
+
+.video-studio-result-empty [data-slot="empty-description"] {
+  margin: 0;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+}
+
+.video-studio-viewfinder {
+  position: relative;
+  width: 56px;
+  height: 36px;
+  margin: 0;
+  color: var(--ui-text-muted);
+}
+
+/* Two crop marks give the idle preview a frame without reserving the full player. */
+.video-studio-viewfinder::before,
+.video-studio-viewfinder::after {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-color: var(--ui-border-strong);
+  border-style: solid;
+  content: "";
+}
+
+.video-studio-viewfinder::before {
+  inset: 0 auto auto 0;
+  border-width: 1px 0 0 1px;
+}
+
+.video-studio-viewfinder::after {
+  inset: auto 0 0 auto;
+  border-width: 0 1px 1px 0;
+}
+
+.video-studio-viewfinder svg {
+  width: 26px;
+  height: 26px;
+}
+
+.video-studio-player {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--ui-photo-rule);
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-photo-composer);
 }
 
 .video-studio-preview {
-  width: min(100%, calc(var(--video-studio-preview-ratio) * min(52vh, 34rem)));
-  aspect-ratio: var(--video-studio-preview-ratio);
-  align-self: center;
+  position: relative;
+  display: grid;
+  width: 100%;
   overflow: hidden;
-  border-radius: var(--ui-radius-lg);
-  background: var(--ui-bg);
+  place-items: center;
+  background: var(--ui-video-output-background);
 }
 
 .video-studio-preview > :is(video, img) {
   display: block;
-  width: 100%;
-  height: 100%;
+  width: min(100%, calc(var(--video-studio-preview-ratio) * min(48dvh, 30rem)));
+  aspect-ratio: var(--video-studio-preview-ratio);
   object-fit: contain;
 }
 
-@media (max-width: 640px) {
-  .video-studio-results .video-review-transport .ui-range {
-    flex-basis: 50%;
+.video-studio-buffering {
+  position: absolute;
+  inset: auto auto var(--ui-space-3) var(--ui-space-3);
+  max-width: calc(100% - var(--ui-space-6));
+  padding: var(--ui-space-1) var(--ui-space-2);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-photo-composer);
+  pointer-events: none;
+}
+
+.video-studio-playback-bar {
+  display: grid;
+  align-items: center;
+  min-height: 48px;
+  padding: var(--ui-space-2) var(--ui-space-3);
+  border-block-start: 1px solid var(--ui-photo-rule);
+}
+
+.video-studio-playback-bar > [data-slot="alert"] {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.video-studio-result-actions {
+  justify-content: flex-end;
+}
+
+.video-studio-result-restore,
+.video-studio-result-footer > span {
+  margin-inline-end: auto;
+}
+
+.video-studio-result-restore {
+  max-width: 100%;
+}
+
+.video-studio-error-details summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--ui-text-secondary);
+  font-size: var(--ui-text-sm);
+}
+
+.video-studio-error-details code {
+  font-size: var(--ui-text-xs);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .video-studio-preview > :is(video, img) {
+    animation: video-studio-clip-enter var(--ui-duration) var(--ui-ease-out);
+  }
+}
+
+@keyframes video-studio-clip-enter {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@container video-result (max-width: 26rem) {
+  .video-studio-result-empty[data-slot="empty"] {
+    padding: var(--ui-space-3) var(--ui-space-4);
+  }
+
+  .video-studio-playback-bar {
+    min-height: 76px;
+    padding: var(--ui-space-1) var(--ui-space-2);
+  }
+
+  .video-studio-playback-bar .video-review-transport {
+    display: grid;
+    grid-template-columns: repeat(3, auto) minmax(0, 1fr) auto;
+    row-gap: 0;
+  }
+
+  .video-studio-playback-bar .video-review-transport .ui-range {
+    grid-column: 4 / -1;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .video-studio-playback-bar .video-review-time {
+    grid-column: 1 / 5;
+    padding-inline-start: var(--ui-space-2);
   }
 }

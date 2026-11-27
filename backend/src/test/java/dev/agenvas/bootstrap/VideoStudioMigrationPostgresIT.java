@@ -83,21 +83,26 @@ class VideoStudioMigrationPostgresIT {
             try (var rows = sql.executeQuery("select id from video_studio_generation")) {
                 assertThat(rows.next()).isFalse();
             }
-            assertConstraint(() -> project(connection, owner, "IMAGE_STUDIO"), "23505", "uq_project_image_studio_owner");
+            assertConstraint(() -> project(connection, owner, "IMAGE_STUDIO"), "23505",
+                    "uq_project_image_studio_owner");
             UUID video = project(connection, owner, "VIDEO_STUDIO");
             UUID otherVideo = project(connection, otherOwner, "VIDEO_STUDIO");
-            assertConstraint(() -> project(connection, owner, "VIDEO_STUDIO"), "23505", "uq_project_video_studio_owner");
+            assertConstraint(() -> project(connection, owner, "VIDEO_STUDIO"), "23505",
+                    "uq_project_video_studio_owner");
             assertConstraint(() -> project(connection, owner, "UNKNOWN"), "23514", "ck_project_purpose");
 
             UUID videoTask = task(connection, video, "VIDEO_GENERATION");
             UUID secondVideoTask = task(connection, video, "VIDEO_GENERATION");
             UUID otherTask = task(connection, otherVideo, "VIDEO_GENERATION");
             UUID canvasTask = task(connection, canvas, "VIDEO_GENERATION");
-            assertConstraint(() -> generation(connection, owner, canvas, canvasTask, "command", "{\"schemaVersion\":1}"),
+            assertConstraint(
+                    () -> generation(connection, owner, canvas, canvasTask, "command", "{\"schemaVersion\":1}"),
                     "23503", "fk_video_studio_generation_project");
-            assertConstraint(() -> generation(connection, owner, imageScope, imageTask, "command", "{\"schemaVersion\":1}"),
+            assertConstraint(
+                    () -> generation(connection, owner, imageScope, imageTask, "command", "{\"schemaVersion\":1}"),
                     "23503", "fk_video_studio_generation_project");
-            assertConstraint(() -> generation(connection, otherOwner, video, videoTask, "command", "{\"schemaVersion\":1}"),
+            assertConstraint(
+                    () -> generation(connection, otherOwner, video, videoTask, "command", "{\"schemaVersion\":1}"),
                     "23503", "fk_video_studio_generation_project");
             assertConstraint(() -> generation(connection, owner, video, otherTask, "command", "{\"schemaVersion\":1}"),
                     "23503", "fk_video_studio_generation_task");
@@ -107,9 +112,11 @@ class VideoStudioMigrationPostgresIT {
             }
             generation(connection, owner, video, videoTask, "command", "{\"schemaVersion\":1}");
             generation(connection, otherOwner, otherVideo, otherTask, "command", "{\"schemaVersion\":1}");
-            assertConstraint(() -> generation(connection, owner, video, secondVideoTask, "command", "{\"schemaVersion\":1}"),
+            assertConstraint(
+                    () -> generation(connection, owner, video, secondVideoTask, "command", "{\"schemaVersion\":1}"),
                     "23505", "uq_video_studio_generation_owner_command");
-            assertConstraint(() -> generation(connection, owner, video, videoTask, "different", "{\"schemaVersion\":1}"),
+            assertConstraint(
+                    () -> generation(connection, owner, video, videoTask, "different", "{\"schemaVersion\":1}"),
                     "23505", "uq_video_studio_generation_task");
             assertConstraint(() -> sql.executeUpdate("update video_studio_generation set project_purpose='CANVAS'"),
                     "23514", "ck_video_studio_generation_purpose");

@@ -37,6 +37,11 @@
 - **THEN** 工作台按角色展示帧图，并向供应商提交固定的原版本。仅当能力允许省略尾帧时，单首帧属于有效输入
 - **AND** 缺首帧、仅有尾帧、不支持的尾帧、动态图片、非图片或任意外部素材 URL 均不被受理；不会退回文字模式替用户提交
 
+#### Scenario: Return to an in-progress frame upload
+
+- **WHEN** 用户在上传首帧或尾帧时切换页面，随后在同一会话返回工作台
+- **THEN** 工作台继续展示上传状态，成功后将帧图放入原草稿的对应位置，失败后显示原因
+
 #### Scenario: Generate with ordered image, video and audio references
 
 - **WHEN** 用户在全能参考模式为已发布模型上传支持的图片、视频或音频
@@ -57,6 +62,12 @@
 - **WHEN** 浏览器超时或断线而未收到受理结果，用户选择核对原请求
 - **THEN** 工作台使用冻结的原请求及原幂等键，同键同请求返回原记录，同键不同请求冲突，不创建第二条任务或用量预留
 
+#### Scenario: Follow the submit action by keyboard
+
+- **WHEN** 用户在生成按钮上按下回车，浏览器正在等待受理或已经丢失回执
+- **THEN** 原位显示提交状态，传输期间再次按回车只保留首次提交
+- **AND** 受理未确认时同一焦点位置提供「核对原请求」
+
 #### Scenario: The original provider attempt needs recovery
 
 - **WHEN** 供应商受理不确定、查询或下载中断，或原结果归档失败
@@ -66,6 +77,12 @@
 ### Requirement: Play and download private archived videos
 
 工作台 MUST 允许所有者播放、定位、放大和下载已归档的原视频，保留供应商返回的音轨。归档成功与播放器已就绪 MUST 分开呈现，切换结果不得把上一条视频或声音留在新页面。
+
+#### Scenario: Preserve playback during history updates
+
+- **WHEN** 正在播放的视频仍在结果中，同一批次的轮询返回额外结果或调整结果顺序
+- **THEN** 保留当前播放器及播放进度
+- **AND** 播放中等待数据时显示缓冲提示，恢复播放或暂停时撤下提示
 
 #### Scenario: The video was saved but the browser is still loading
 
@@ -104,3 +121,9 @@
 - **WHEN** 用户在桌面开合历史栏、切换横竖视频，或在窄屏使用历史抽屉
 - **THEN** 桌面播放器按比例完整展示并与编辑区沿整页中轴对齐，历史栏不遮挡预览；窄屏无整页横向滚动，模型、模式、参数和帧角色可识别，播放器和生成动作可键盘操作
 - **AND** 关闭窄屏历史抽屉归还触发焦点，不因回填自动唤起软键盘
+
+#### Scenario: Compose a shot with a workflow that publishes many inputs
+
+- **WHEN** 用户打开带有参考素材与技术参数的已发布视频模型
+- **THEN** 优先显示镜头描述、模型模式、可用素材槽及常用输出设置，视频结果位于编辑区之后；没有结果时使用紧凑占位
+- **AND** 低频参数默认收起，缺失必填值或已有无效值时可展开修正；开合不改变已编辑值、条件槽位、发布默认值或生成请求

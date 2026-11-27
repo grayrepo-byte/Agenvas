@@ -43,6 +43,16 @@ class MockChatGatewayTest {
     }
 
     @Test
+    void truncatesLongRepliesWithoutSplittingAnEmojiAtTheStorageLimit() {
+        String prefix = gateway.call(List.of(new UserMessage("")), List.of(), Map.of())
+                .response().getResult().getOutput().getText();
+        String text = "x".repeat(20_000 - prefix.length() - 1);
+        String reply = gateway.call(List.of(new UserMessage(text + "🎬")), List.of(), Map.of())
+                .response().getResult().getOutput().getText();
+        assertThat(reply).isEqualTo(prefix + text);
+    }
+
+    @Test
     void acceptsToolDefinitionsSoAgentRunsAreNotRefused() {
         ChatGateway.Exchange exchange = gateway.call(List.of(new UserMessage("整理画布")),
                 List.of(mock(ToolCallback.class)), Map.of("projectId", "p", "runId", "r"));

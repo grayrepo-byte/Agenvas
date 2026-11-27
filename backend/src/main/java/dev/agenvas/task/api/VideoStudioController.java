@@ -59,7 +59,8 @@ public class VideoStudioController {
     }
 
     @PostMapping(path = "/references/{kind}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<VideoStudioService.ReferenceAsset> uploadReference(@AuthenticationPrincipal AdminPrincipal principal,
+    public ResponseEntity<VideoStudioService.ReferenceAsset> uploadReference(
+            @AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable Asset.MediaKind kind, @RequestPart(name = "file", required = false) MultipartFile file,
             MultipartHttpServletRequest request) throws IOException {
         try (var input = singleFile(file, request)) {
@@ -103,7 +104,8 @@ public class VideoStudioController {
         public boolean isIntegerInputs() {
             return (durationSeconds == null || durationSeconds.isNull()
                     || durationSeconds.isIntegralNumber() && durationSeconds.canConvertToInt())
-                    && capabilityVersion != null && capabilityVersion.isIntegralNumber() && capabilityVersion.canConvertToInt();
+                    && capabilityVersion != null && capabilityVersion.isIntegralNumber()
+                    && capabilityVersion.canConvertToInt();
         }
 
         VideoStudioService.Command command() {

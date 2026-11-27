@@ -90,7 +90,8 @@ class ImageStudioMigrationPostgresIT {
                 .locations("classpath:db/migration").load();
         assertThat(upgraded.migrate().migrationsExecuted).isGreaterThanOrEqualTo(1);
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
-                POSTGRES.getPassword()); var sql = connection.createStatement();
+                POSTGRES.getPassword());
+                var sql = connection.createStatement();
                 var rows = sql.executeQuery("select command_key, deleted_at, delete_files from image_studio_batch")) {
             assertThat(rows.next()).isTrue();
             assertThat(rows.getString(1)).isEqualTo("prior-studio-command");

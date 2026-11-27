@@ -38,7 +38,7 @@ class VideoStudioOpenApiTest {
         assertResponse(create, "201", "VideoStudioGeneration");
         assertResponse(history, "200", "VideoStudioGenerationPage");
         assertResponse(detail, "200", "VideoStudioGeneration");
-        for (var operation : new JsonNode[] {context, upload, referenceUpload, history, create, detail}) {
+        for (var operation : new JsonNode[]{context, upload, referenceUpload, history, create, detail}) {
             assertThat(operation.at("/responses/401/$ref").asText())
                     .isEqualTo("#/components/responses/Unauthenticated");
         }
@@ -68,7 +68,7 @@ class VideoStudioOpenApiTest {
         assertThat(request.at("/if/properties/mode/const").asText()).isEqualTo("START_END");
         assertThat(request.at("/then/required").valueStream().map(JsonNode::asText))
                 .containsExactly("startFrameVersionId");
-        for (var field : new String[] {"startFrameVersionId", "endFrameVersionId"}) {
+        for (var field : new String[]{"startFrameVersionId", "endFrameVersionId"}) {
             assertThat(request.at("/properties/" + field + "/format").asText()).isEqualTo("uuid");
             assertThat(request.at("/else/properties/" + field + "/type").asText()).isEqualTo("null");
         }

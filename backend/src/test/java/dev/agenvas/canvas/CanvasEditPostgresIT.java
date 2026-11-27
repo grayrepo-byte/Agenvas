@@ -147,6 +147,24 @@ class CanvasEditPostgresIT {
                         problem -> assertThat(problem.code()).isEqualTo("CANVAS_EDIT_LIMIT"));
         assertThat(canvas.list(owner.userId(), project.id())).hasSize(100);
         assertThat(events.replayWindow(owner.userId(), project.id()).latestSequence()).isEqualTo(seq);
+
+        CanvasItem outside = text("Move into full group");
+        var moveIn = new CanvasService.UpdateLayout(outside.id(), outside.version(), outside.x(), outside.y(),
+                outside.width(), outside.height(), outside.zIndex(), group);
+        long beforeMove = events.replayWindow(owner.userId(), project.id()).latestSequence();
+        assertThatThrownBy(() -> canvas.apply(owner.userId(), project.id(), List.of(moveIn)))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("CANVAS_EDIT_LIMIT"));
+        assertThat(item(outside.id()).groupId()).isNull();
+        assertThat(item(outside.id()).version()).isEqualTo(outside.version());
+        assertThat(events.replayWindow(owner.userId(), project.id()).latestSequence()).isEqualTo(beforeMove);
+
+        CanvasItem member = item(source.id());
+        var moveOut = new CanvasService.UpdateLayout(member.id(), member.version(), member.x(), member.y(),
+                member.width(), member.height(), member.zIndex(), null);
+        canvas.apply(owner.userId(), project.id(), List.of(moveIn, moveOut));
+        assertThat(item(outside.id()).groupId()).isEqualTo(group);
+        assertThat(item(member.id()).groupId()).isNull();
     }
 
     @Test

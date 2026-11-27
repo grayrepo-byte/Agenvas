@@ -76,14 +76,16 @@ class CanvasCharacterNodePostgresIT {
         Selection selection = new Selection(character, 1, look, List.of(), true, false);
         CreateNode request = new CreateNode(
                 selection,
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
+                new BigDecimal("12.3456"),
+                new BigDecimal("-4.3215"),
                 new BigDecimal("300"),
                 new BigDecimal("300"),
                 0,
                 null,
                 false);
         var created = nodes.create(owner, project, item, request);
+        assertThat(created.item().x()).isEqualByComparingTo("12.346");
+        assertThat(created.item().y()).isEqualByComparingTo("-4.322");
         assertThat(created.item().subjectType()).isEqualTo(CanvasItem.SubjectType.CHARACTER);
         assertThat(created.artifact()).isNull();
         characters.save(

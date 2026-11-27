@@ -66,10 +66,12 @@ public class ProjectService {
     /** The video Studio has its own storage scope, separate from image Studio and canvases. */
     @Transactional
     public Project ensureVideoStudioScope(UUID ownerId) {
-        return ensureStudioScope(ownerId, ProjectPurpose.VIDEO_STUDIO, "Video Studio", Project.AspectRatio.LANDSCAPE_16_9);
+        return ensureStudioScope(ownerId, ProjectPurpose.VIDEO_STUDIO, "Video Studio",
+                Project.AspectRatio.LANDSCAPE_16_9);
     }
 
-    private Project ensureStudioScope(UUID ownerId, ProjectPurpose purpose, String name, Project.AspectRatio aspectRatio) {
+    private Project ensureStudioScope(UUID ownerId, ProjectPurpose purpose, String name,
+            Project.AspectRatio aspectRatio) {
         Instant now = clock.instant();
         return projects.ensureStudioScope(new Project(UUID.randomUUID(), ownerId,
                 name, aspectRatio, Project.Status.ACTIVE, 0, 0, now, now, null), purpose);

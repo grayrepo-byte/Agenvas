@@ -18,6 +18,7 @@ import {
   useInfiniteQuery,
   useIsMutating,
   useMutation,
+  useMutationState,
   useQueries,
   useQuery,
   useQueryClient,
@@ -219,6 +220,7 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
     mutationFn: createImageStudioBatch,
     onSuccess: (batch, command) => {
       const current = useImageStudioDraftStore.getState().owners[ownerId];
+      if (current?.command !== command) return;
       if (revealCommand.current === command.key) {
         revealCommand.current = null;
         if (current?.viewingSubmission) setRevealBatchId(batch.id);
@@ -235,6 +237,7 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
       void queryClient.invalidateQueries({ queryKey: historyKey(ownerId) });
     },
     onError: (error, command) => {
+      if (useImageStudioDraftStore.getState().owners[ownerId]?.command !== command) return;
       // A definitive client rejection did not accept a batch. Network uncertainty retains the command.
       if (
         error instanceof ApiError &&
@@ -251,13 +254,15 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
   });
   const removeBatch = useMutation({
     mutationFn: deleteImageStudioBatch,
-    onSuccess: async (_, { id }) => {
+    onMutate: () => useImageStudioDraftStore.getState().session,
+    onSuccess: async (_, { id }, session) => {
       const listKey = historyKey(ownerId);
       const detailKey = batchKey(ownerId, id);
       await Promise.all([
         queryClient.cancelQueries({ queryKey: listKey, exact: true }),
         queryClient.cancelQueries({ queryKey: detailKey, exact: true }),
       ]);
+      if (session !== useImageStudioDraftStore.getState().session) return;
       const current = useImageStudioDraftStore.getState().owners[ownerId];
       const cached = queryClient.getQueryData<typeof history.data>(listKey);
       const pages = cached?.pages.map(page => ({ ...page, items: page.items.filter(row => row.id !== id) }));
@@ -291,14 +296,24 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
       await queryClient.fetchQuery({ ...batchOptions(ownerId, sourceBatchId), staleTime: 0 });
     },
   });
+  const referenceUploadKey = ["image-studio", ownerId, "upload-reference"] as const;
   const upload = useMutation({
+    mutationKey: referenceUploadKey,
     mutationFn: uploadImageStudioReference,
-    onSuccess: reference => {
-      const current = useImageStudioDraftStore.getState().owners[ownerId];
-      update({ references: [...(current?.references ?? []), reference] });
+    onMutate: () => useImageStudioDraftStore.getState().session,
+    onSuccess: (reference, _file, session) => {
+      const store = useImageStudioDraftStore.getState();
+      const current = store.owners[ownerId];
+      if (session !== store.session || !current) return;
+      update({ references: [...current.references, reference] });
     },
     retry: false,
   });
+  const latestUpload = useMutationState({
+    filters: { mutationKey: referenceUploadKey, exact: true },
+    select: mutation => mutation.state,
+  }).at(-1);
+  const uploading = latestUpload?.status === "pending";
   const parameters = draft.parameters;
   const staleCapability = !!capability && draft.capabilityVersion !== capability.capabilityVersion;
   const invalidParameters =
@@ -318,12 +333,12 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
     !invalidParameters &&
     !tooManyReferences &&
     !!draft.prompt.trim() &&
-    !upload.isPending &&
+    !uploading &&
     !accepting &&
     !draft.command;
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canGenerate || !capability) return;
+    if (!canGenerate || !capability || useImageStudioDraftStore.getState().owners[ownerId]?.command) return;
     const command: StudioCommand = {
       key: createCommandKey(),
       request: {
@@ -598,7 +613,7 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
                 if (batch) setPreview({ batchId: batch.id, versionId: result.artifactVersionId });
               }}
               onRestore={restoreBatch}
-              locked={locked || upload.isPending}
+              locked={locked || uploading}
             />
           ) : null}
         </section>
@@ -667,9 +682,9 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
             </Button>
           </Notice>
         ) : null}
-        {upload.error ? (
+        {latestUpload?.error ? (
           <p className="image-studio-error" role="alert">
-            {errorText(upload.error)}
+            {errorText(latestUpload.error)}
           </p>
         ) : null}
         {tooManyReferences ? (
@@ -713,16 +728,16 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  aria-label={upload.isPending ? t("imageStudio.uploading") : t("imageStudio.addReference")}
+                  aria-label={uploading ? t("imageStudio.uploading") : t("imageStudio.addReference")}
                   title={
                     capability
                       ? `${t("imageStudio.referenceHint")} · ${draft.references.length}/${capability.maxReferenceImages}`
                       : t("imageStudio.referenceHint")
                   }
-                  disabled={!capability || upload.isPending || draft.references.length >= capability.maxReferenceImages}
+                  disabled={!capability || uploading || draft.references.length >= capability.maxReferenceImages}
                   onClick={() => inputRef.current?.click()}
                 >
-                  {upload.isPending ? (
+                  {uploading ? (
                     <CircleNotch className="image-studio-spinner" aria-hidden="true" />
                   ) : (
                     <Plus aria-hidden="true" />
@@ -735,14 +750,12 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
                   aria-label={t("imageStudio.uploadReference")}
                   accept="image/png,image/jpeg,image/webp"
                   disabled={
-                    locked ||
-                    upload.isPending ||
-                    !capability ||
-                    draft.references.length >= capability.maxReferenceImages
+                    locked || uploading || !capability || draft.references.length >= capability.maxReferenceImages
                   }
                   onChange={event => {
                     const file = event.target.files?.[0];
-                    if (file) upload.mutate(file);
+                    if (file && !queryClient.isMutating({ mutationKey: referenceUploadKey, exact: true }))
+                      upload.mutate(file);
                     event.target.value = "";
                   }}
                 />
@@ -786,7 +799,7 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
                     type="button"
                     size="xs"
                     variant="ghost"
-                    disabled={upload.isPending || verifyHistorySource.isPending}
+                    disabled={uploading || verifyHistorySource.isPending}
                     onClick={restoreHistoryPromptSettings}
                   >
                     {t("imageStudio.restoreHistoryPromptSettings")}

@@ -62,13 +62,20 @@ class VideoStudioPostgresIT {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired IdentityService identities;
-    @Autowired WebApplicationContext context;
-    @Autowired ObjectMapper mapper;
-    @Autowired MediaCapabilityService capabilities;
-    @Autowired VideoStudioService studio;
-    @Autowired TransactionTemplate transactions;
-    @Autowired JdbcClient jdbc;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    WebApplicationContext context;
+    @Autowired
+    ObjectMapper mapper;
+    @Autowired
+    MediaCapabilityService capabilities;
+    @Autowired
+    VideoStudioService studio;
+    @Autowired
+    TransactionTemplate transactions;
+    @Autowired
+    JdbcClient jdbc;
     private MockMvc mvc;
     private UUID owner;
     private RequestPostProcessor auth;
@@ -114,7 +121,7 @@ class VideoStudioPostgresIT {
         assertThat(total("asset", frame.path("projectId").asText())).isPositive();
         long assets = total("asset", frame.path("projectId").asText());
         var gif = new MockMultipartFile("file", "moving.gif", "image/gif", ImageAssetFixture.encoded("gif", 2, 2));
-        var bad = new MockMultipartFile("file", "invalid.png", "image/png", new byte[] {0, 12, 34});
+        var bad = new MockMultipartFile("file", "invalid.png", "image/png", new byte[]{0, 12, 34});
         // Tiny synthetic two-frame images, encoded locally with ffmpeg and img2webp.
         var apng = animatedFrame("png", "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAABAAAAAQBPJcTW"
                 + "AAAACGFjVEwAAAACAAAAAPONk3AAAAAaZmNUTAAAAAAAAAACAAAAAgAAAAAAAAAAAAEAAgAA5keNuAAAABJJREFUeJxjZGD4y8DA"
@@ -226,7 +233,8 @@ class VideoStudioPostgresIT {
         var ids = new HashSet<String>();
         for (int i = 0; i < 3; i++)
             ids.add(send("page-" + i, cmd, 201).path("id").asText());
-        jdbc.sql("update video_studio_generation set created_at = '2100-01-01T00:00:00Z' where command_key like 'page-%'")
+        jdbc.sql(
+                "update video_studio_generation set created_at = '2100-01-01T00:00:00Z' where command_key like 'page-%'")
                 .update();
         var page1 = payload(mvc.perform(get(BASE + "/generations").param("limit", "2").with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
@@ -285,7 +293,8 @@ class VideoStudioPostgresIT {
     }
 
     private static MockMultipartFile animatedFrame(String format, String base64) {
-        return new MockMultipartFile("file", "animated." + format, "image/" + format, Base64.getDecoder().decode(base64));
+        return new MockMultipartFile("file", "animated." + format, "image/" + format,
+                Base64.getDecoder().decode(base64));
     }
 
     private JsonNode upload(String format) throws Exception {
@@ -316,7 +325,8 @@ class VideoStudioPostgresIT {
     }
 
     private long reservations(String project) {
-        return jdbc.sql("select count(*) from usage_ledger where project_id = cast(? as uuid) and entry_type='RESERVATION'")
+        return jdbc.sql(
+                "select count(*) from usage_ledger where project_id = cast(? as uuid) and entry_type='RESERVATION'")
                 .param(project).query(Long.class).single();
     }
 }

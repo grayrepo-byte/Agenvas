@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 一键运行测试：前端 Vitest + 后端 Maven verify。
+# 一键运行测试：前端包测试 + 后端 Maven verify。
 #
 # 用法:
 #   ./run-tests.sh              # 前端单元测试 + 后端 verify（单元 + 集成），并行
@@ -94,8 +94,7 @@ prefix_lines() {
   awk -v tag="$1" '{ printf "[%s] %s\n", tag, $0; fflush() }'
 }
 
-# 前端测试命令：优先项目约定的 pnpm，pnpm 版本切换不可用时退回本地 Vitest 二进制，
-# 并打印告警而不是静默改变测试入口。
+# 两条路径均执行 package.json 的完整 test 脚本，使用已有的 node_modules。
 frontend_command() {
   cd "$FRONTEND_DIR" || return 1
   if [ ! -d node_modules ]; then
@@ -105,9 +104,8 @@ frontend_command() {
   if pnpm --version >/dev/null 2>&1; then
     pnpm test
   else
-    echo "警告: pnpm 在本机不可用（packageManager 版本切换失败），改用 frontend/node_modules/.bin/vitest。" >&2
-    echo "修复方式: pnpm approve-builds -g 后重装，或补跑 pnpm 包内的 install.js" >&2
-    ./node_modules/.bin/vitest run
+    echo "pnpm 不可用，使用 Node 执行同一份前端 test 脚本。" >&2
+    node --run test
   fi
 }
 
@@ -121,11 +119,20 @@ backend_command() {
   fi
 }
 
+# 在每个后台任务内记录其运行时间，避免 wait 的先后顺序改变统计。
+run_suite() {
+  local label=$1 log=$2 command=$3 start=$SECONDS result
+  "$command" 2>&1 | tee "$log" | prefix_lines "$label"
+  result=${PIPESTATUS[0]}
+  printf '%s\n' "$(( SECONDS - start ))" > "$log.seconds"
+  return "$result"
+}
+
 started_at=$(date +%s)
 
 echo "${C_BOLD}运行范围${C_RESET}"
 if [ "$RUN_FRONTEND" -eq 1 ]; then
-  echo "  前端  Vitest 单元测试"
+  echo "  前端  package.json test"
 fi
 if [ "$RUN_BACKEND" -eq 1 ]; then
   if [ "$FULL_VERIFY" -eq 1 ]; then
@@ -137,13 +144,8 @@ fi
 echo
 
 if [ "$RUN_FRONTEND" -eq 1 ]; then
-  printf '  %s启动前端测试%s (Vitest)\n' "$C_YELLOW" "$C_RESET"
-  # tee 留完整日志，prefix_lines 实时打到终端；PIPESTATUS[0] 取回测试本身的退出码，
-  # 而不是管道末端 awk 的。
-  (
-    frontend_command 2>&1 | tee "$FRONTEND_LOG" | prefix_lines 前端
-    exit "${PIPESTATUS[0]}"
-  ) &
+  printf '  %s启动前端测试%s\n' "$C_YELLOW" "$C_RESET"
+  run_suite 前端 "$FRONTEND_LOG" frontend_command &
   FE_PID=$!
 fi
 
@@ -153,10 +155,7 @@ if [ "$RUN_BACKEND" -eq 1 ]; then
   else
     printf '  %s启动后端测试%s (Maven test)\n' "$C_YELLOW" "$C_RESET"
   fi
-  (
-    backend_command 2>&1 | tee "$BACKEND_LOG" | prefix_lines 后端
-    exit "${PIPESTATUS[0]}"
-  ) &
+  run_suite 后端 "$BACKEND_LOG" backend_command &
   BE_PID=$!
 fi
 
@@ -164,21 +163,19 @@ echo
 
 FE_RC=0
 BE_RC=0
-FE_SECONDS=0
-BE_SECONDS=0
+FE_SECONDS='?'
+BE_SECONDS='?'
 
 if [ -n "$FE_PID" ]; then
-  fe_started=$(date +%s)
   wait "$FE_PID"
   FE_RC=$?
-  FE_SECONDS=$(( $(date +%s) - fe_started ))
+  if [ -r "$FRONTEND_LOG.seconds" ]; then read -r FE_SECONDS < "$FRONTEND_LOG.seconds"; fi
 fi
 
 if [ -n "$BE_PID" ]; then
-  be_started=$(date +%s)
   wait "$BE_PID"
   BE_RC=$?
-  BE_SECONDS=$(( $(date +%s) - be_started ))
+  if [ -r "$BACKEND_LOG.seconds" ]; then read -r BE_SECONDS < "$BACKEND_LOG.seconds"; fi
 fi
 
 trap - INT TERM

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 # Produce one stopped-writer database, asset and repository-template backup.
 # Credentials remain outside this archive and must be escrowed separately.
@@ -60,6 +61,8 @@ if [[ $'\n'"$backup_running"$'\n' == *$'\nweb\n'* ]]; then
   backup_restart_web=true
 fi
 
+# Pin the public templates before stopping writers. Local overrides are escrowed separately.
+backup_revision=$(git -C "$backup_repo" rev-parse --verify 'HEAD^{commit}')
 mkdir -m 700 -- "$backup_output"
 backup_stopped=false
 backup_restore_services() {
@@ -90,9 +93,8 @@ backup_stopped=true
   > "$backup_output/database.dump"
 docker run --rm \
   --mount "type=volume,source=$backup_asset_volume,target=/source,readonly" \
-  --mount "type=bind,source=$backup_output,target=/backup" \
-  postgres:17.11-alpine tar -C /source -czf /backup/assets.tgz .
-tar -C "$backup_repo" -czf "$backup_output/repository-templates.tgz" \
+  postgres:17.11-alpine tar -C /source -czf - . > "$backup_output/assets.tgz"
+git -C "$backup_repo" archive --format=tar.gz --output="$backup_output/repository-templates.tgz" "$backup_revision" -- \
   configs deploy docker-compose.yml docker-compose.local.yml
 
 [[ -s $backup_output/database.dump && -s $backup_output/assets.tgz &&
@@ -105,7 +107,6 @@ tar -tzf "$backup_output/repository-templates.tgz" >/dev/null
 backup_database_sha=$(sha256sum "$backup_output/database.dump" | awk '{print $1}')
 backup_assets_sha=$(sha256sum "$backup_output/assets.tgz" | awk '{print $1}')
 backup_templates_sha=$(sha256sum "$backup_output/repository-templates.tgz" | awk '{print $1}')
-backup_revision=$(git -C "$backup_repo" rev-parse HEAD)
 jq -n --arg project "$backup_project" --arg revision "$backup_revision" \
   --arg database "$backup_database_sha" --arg assets "$backup_assets_sha" \
   --arg templates "$backup_templates_sha" \
@@ -115,4 +116,4 @@ jq -n --arg project "$backup_project" --arg revision "$backup_revision" \
     credentialEscrowRequired:true}' > "$backup_output/manifest.json"
 chmod 600 "$backup_output/database.dump" "$backup_output/assets.tgz" \
   "$backup_output/repository-templates.tgz" "$backup_output/manifest.json"
-printf 'Verified backup written to %s. Escrow matching credentials separately.\n' "$backup_output"
+printf 'Verified backup written to %s. Escrow local configuration overrides and matching credentials separately.\n' "$backup_output"

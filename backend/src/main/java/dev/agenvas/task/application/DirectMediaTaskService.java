@@ -845,7 +845,8 @@ public class DirectMediaTaskService {
                 && (comfy == null || comfy.maps(ComfyUiWorkflowDefinition.Source.WIDTH))
                 && !(MiniMaxH3Protocol.ADAPTER_ID.equals(binding.adapterId())
                         && draft.videoInputMode() != MediaDraft.VideoInputMode.TEXT)) {
-            videoParameters = new VideoGenerationParameters(fallbackAspectRatio.get(), videoParameters.videoResolution());
+            videoParameters = new VideoGenerationParameters(fallbackAspectRatio.get(),
+                    videoParameters.videoResolution());
         }
         if (KlingProtocol.IMAGE_ADAPTER_ID.equals(binding.adapterId())
                 || KlingProtocol.VIDEO_ADAPTER_ID.equals(binding.adapterId())) {
@@ -895,8 +896,10 @@ public class DirectMediaTaskService {
                 renderedPrompt, userRenderedPrompt, autodlResolution, resolutionTier, style, comfy, comfyValues, kling,
                 nativeProfile,
                 studio ? null : characters.getObject().frozenBindings(ownerId, projectId, canvasItem.id()).deepCopy(),
-                studio ? null : mapper.valueToTree(characters.getObject().frozenContribution(ownerId, projectId,
-                        canvasItem.id())),
+                studio
+                        ? null
+                        : mapper.valueToTree(characters.getObject().frozenContribution(ownerId, projectId,
+                                canvasItem.id())),
                 linkedPrompts, fallbackAspectRatio);
     }
 
@@ -1892,7 +1895,8 @@ public class DirectMediaTaskService {
         if (nativeProfile != null) {
             JsonNode values = effectiveDynamicParameters == null
                     ? NativeMediaProfiles.effectiveValues(nativeProfile,
-                            capabilities.parameters(binding, draft.parameters()), draft.prompt(), draft.durationSeconds(),
+                            capabilities.parameters(binding, draft.parameters()), draft.prompt(),
+                            draft.durationSeconds(),
                             mapper)
                     : effectiveDynamicParameters.path(NativeMediaProtocol.VALUES_PROPERTY);
             for (var field : nativeProfile.inputs())

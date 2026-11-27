@@ -1,4 +1,4 @@
-import { ArrowClockwise, ClockCounterClockwise, FilmStrip, Plus, Sparkle, X } from "@/shared/ui/icons";
+import { ArrowClockwise, ClockCounterClockwise, FilmStrip, ArrowRight, Cube, X } from "@/shared/ui/icons";
 import {
   queryOptions,
   useInfiniteQuery,
@@ -7,9 +7,9 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useId, useRef, useState, useSyncExternalStore, type FormEvent, type MouseEventHandler } from "react";
+import { useId, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent } from "react";
 import { Link } from "react-router";
-import { ApiError, assetContentUrl, assetThumbnailUrl, getCurrentUser } from "../../shared/api/client";
+import { ApiError, assetThumbnailUrl, getCurrentUser } from "../../shared/api/client";
 import {
   acceptVideoStudioGeneration,
   checkVideoStudioFrame,
@@ -20,13 +20,11 @@ import {
   uploadVideoStudioReference,
   type VideoStudioCapability,
   type VideoStudioCommand,
-  type VideoStudioFrame,
   type VideoStudioGeneration,
   type VideoStudioReferenceAsset,
 } from "../../shared/api/videoStudio";
 import { formatDate, t, useLocale, type MessageKey } from "../../shared/i18n";
 import { createCommandKey } from "../../shared/lib/clientId";
-import { MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { BrandLogo } from "../../shared/ui/BrandLogo";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { Notice } from "../../shared/ui/PagePrimitives";
@@ -46,7 +44,6 @@ import {
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
 import { Textarea } from "../../shared/ui/primitives/textarea";
-import { RunningHubForm } from "../canvas/RunningHubForm";
 import { workflowFieldLabel } from "../canvas/workflowFieldPresentation";
 import {
   evaluateWorkflowFields,
@@ -55,13 +52,19 @@ import {
   type WorkflowValue,
 } from "../canvas/workflowFields";
 import {
+  FRAME_LABELS,
+  LIMIT_KEYS,
+  MAX_REFERENCES,
+  allowsFrame,
   studioFrames,
+  workflowRatio,
   useVideoStudioDraft,
   useVideoStudioDraftStore,
   type FrameSlot,
   type VideoStudioDraft,
   type VideoStudioSettings,
 } from "./videoStudioDraft";
+import { VideoStudioInputs } from "./VideoStudioInputs";
 import { VideoStudioResults } from "./VideoStudioResults";
 import "./VideoStudioPage.css";
 
@@ -73,17 +76,12 @@ const MODE_LABELS = {
   START_END: "videoStudio.frameMode",
   GENERAL_REFERENCE: "common.mixedReference",
 } as const;
-const REFERENCE_KINDS = ["IMAGE", "VIDEO", "AUDIO"] as const;
 const REFERENCE_LABELS = {
   IMAGE: "templates.numberedImage",
   VIDEO: "videoStudio.numberedVideo",
   AUDIO: "videoStudio.numberedAudio",
 } as const;
-const KIND_LABELS = { IMAGE: "common.image", VIDEO: "common.video", AUDIO: "common.audio" } as const;
-const MAX_REFERENCES = 14;
 type Reference = VideoStudioGeneration["references"][number];
-const LIMIT_KEYS = { IMAGE: "image", VIDEO: "video", AUDIO: "audio" } as const;
-const FRAME_LABELS = { startFrame: "videoStudio.startFrame", endFrame: "videoStudio.endFrame" } as const;
 const STATUS_LABELS = {
   READY: "imageStudio.status.ready",
   RUNNING: "imageStudio.status.running",
@@ -155,10 +153,6 @@ function validDuration(model: VideoStudioCapability, duration: string) {
   );
 }
 
-function allowsFrame(model: VideoStudioCapability, mode: VideoStudioSettings["mode"], slot: FrameSlot) {
-  return mode === "START_END" && model.modes.includes(mode) && (slot === "startFrame" || model.supportsEndFrame);
-}
-
 function workflowValues(settings: VideoStudioSettings) {
   return {
     ...settings.dynamicValues,
@@ -211,6 +205,15 @@ function compatibleReferences(model: VideoStudioCapability, settings: VideoStudi
   return references;
 }
 
+/** Only explicit actions move the viewport. History refreshes and polling keep the editor in place. */
+function reveal(element: HTMLElement | null) {
+  requestAnimationFrame(() => {
+    if (!element?.isConnected) return;
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    element.scrollIntoView?.({ block: "start", behavior: reduced ? "instant" : "smooth" });
+  });
+}
+
 function contextOptions(ownerId: string) {
   return queryOptions({
     queryKey: ["video-studio", ownerId, "context"],
@@ -239,13 +242,17 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
   const update = (patch: Partial<VideoStudioDraft>) => useVideoStudioDraftStore.getState().update(ownerId, patch);
   const current = () => useVideoStudioDraftStore.getState().owners[ownerId];
   const narrow = useSyncExternalStore(subscribeLayout, isCompact);
-  const [railOpen, setRailOpen] = useState(true);
+  const [historyPreference, setHistoryPreference] = useState<boolean | null>(null);
+  const stage = useRef<HTMLDivElement>(null);
+  const composer = useRef<HTMLFormElement>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const historyTrigger = useRef<HTMLButtonElement>(null);
+  const showResultAfterClose = useRef(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [change, setChange] = useState<{ patch: Partial<VideoStudioDraft>; incompatible: string[] } | null>(null);
   const changeTrigger = useRef<string>(null);
   const cancelChange = useRef<HTMLButtonElement>(null);
   const [restoreError, setRestoreError] = useState<string>();
-  const [uploadError, setUploadError] = useState<string>();
   const fieldId = useId();
   const historyId = `${fieldId}-history`;
 
@@ -260,7 +267,12 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
     refetchInterval: query => (query.state.data?.pages.some(page => page.items.some(active)) ? POLL_MS : false),
   });
   const rows = new Map(history.data?.pages.flatMap(page => page.items.map(item => [item.id, item] as const)));
-  const selectedId = draft.selectedId ?? rows.keys().next().value;
+  const railOpen = historyPreference ?? (rows.size > 0 || history.isError);
+  // A newer row from another tab must not replace the video already open in this workspace.
+  const firstListed = rows.keys().next().value;
+  const [initialHistoryId, setInitialHistoryId] = useState<string>();
+  if (!initialHistoryId && firstListed) setInitialHistoryId(firstListed);
+  const selectedId = draft.selectedId ?? initialHistoryId ?? firstListed;
   const detail = useQuery({
     queryKey: detailKey(ownerId, selectedId),
     queryFn: ({ signal }) => getVideoStudioGeneration(selectedId!, signal),
@@ -315,6 +327,7 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
         selectedId: state.viewingSubmission ? generation.id : state.selectedId,
       });
       void queryClient.invalidateQueries({ queryKey: historyKey });
+      if (state.viewingSubmission) reveal(stage.current);
     },
     onError: (error, command) => {
       if (current()?.command !== command) return;
@@ -324,7 +337,30 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
       }
     },
   });
-  const upload = useMutation({ mutationFn: uploadVideoStudioFrame, retry: false });
+  const frameUploadKey = ["video-studio", ownerId, "upload-frame"] as const;
+  const upload = useMutation({
+    mutationKey: frameUploadKey,
+    mutationFn: ({ file }: { file: File; slot: FrameSlot; settings: VideoStudioSettings }) =>
+      uploadVideoStudioFrame(file),
+    // The workspace may have unmounted while the upload ran. Only the original settings can receive this frame.
+    onSuccess: (frame, { slot, settings }) => {
+      if (current()?.settings !== settings) return;
+      const catalog = queryClient.getQueryData(contextOptions(ownerId).queryKey);
+      if (
+        frame.projectId === catalog?.projectId &&
+        catalog?.capabilities.some(item => modelKey(item) === modelKey(settings))
+      ) {
+        update({ settings: { ...settings, [slot]: frame }, frameUploadError: null });
+      } else {
+        update({ frameUploadError: t("videoStudio.uploadFailed") });
+      }
+    },
+    onError: (error, { settings }) => {
+      if (current()?.settings === settings) update({ frameUploadError: errorText(error, "videoStudio.uploadFailed") });
+    },
+    retry: false,
+  });
+  const uploadingFrame = useIsMutating({ mutationKey: frameUploadKey, exact: true }) > 0;
   const referenceUploadKey = ["video-studio", ownerId, "upload-reference"] as const;
   const referenceUpload = useMutation({
     mutationKey: referenceUploadKey,
@@ -333,7 +369,7 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
     retry: false,
   });
   const uploadingReference = useIsMutating({ mutationKey: referenceUploadKey, exact: true }) > 0;
-  const uploading = upload.isPending || uploadingReference;
+  const uploading = uploadingFrame || uploadingReference;
   const restore = useMutation({
     mutationFn: async (id: string) => {
       const [generation, catalog] = await Promise.all([
@@ -362,10 +398,21 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
   });
 
   const prompt = draft.prompt.trim();
-  const definition = model?.fields ? { fields: model.fields } : null;
+  // Each published prompt mapping uses the same visible shot-description control.
+  const definition = model?.fields
+    ? {
+        fields: model.fields.map(field =>
+          field.source === "PROMPT"
+            ? { ...field, label: t("videoStudio.shotDescription"), description: t("videoStudio.shotDescription") }
+            : field,
+        ),
+      }
+    : null;
   const values = settings ? workflowValues(settings) : {};
   const durationInput = settings && model?.minDurationSeconds != null ? durationValue(settings) : null;
   const workflow = definition ? evaluateWorkflowFields(definition, values, prompt, durationInput) : null;
+  const promptFields = workflow?.activeFields.filter(field => field.source === "PROMPT") ?? [];
+  const promptLimit = Math.min(MAX_PROMPT_LENGTH, ...promptFields.map(field => field.maxLength ?? MAX_PROMPT_LENGTH));
   const durationField = model?.fields?.find(field => field.source === "DURATION_SECONDS");
   const hasDuration =
     model?.minDurationSeconds != null && (!durationField || workflow?.activeFields.includes(durationField));
@@ -414,7 +461,7 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
     (!!definition || !!prompt) &&
     !validation.length &&
     !referenceErrors.length &&
-    prompt.length <= MAX_PROMPT_LENGTH &&
+    prompt.length <= promptLimit &&
     !locked &&
     !uploading &&
     !restore.isPending &&
@@ -427,7 +474,7 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
 
   function edit(patch: Partial<VideoStudioDraft>) {
     setRestoreError(undefined);
-    update({ acceptanceError: null, ...patch });
+    update({ acceptanceError: null, frameUploadError: null, ...patch });
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -472,7 +519,11 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
   function choose(generation: VideoStudioGeneration) {
     const latest = current() ?? draft;
     const loadPrompt =
-      !latest.command && !locked && generation.task.results.length > 0 && generation.prompt !== latest.prompt;
+      !latest.command &&
+      !locked &&
+      !uploadingReference &&
+      generation.task.results.length > 0 &&
+      generation.prompt !== latest.prompt;
     setRestoreError(undefined);
     update({
       selectedId: generation.id,
@@ -484,6 +535,8 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
           }
         : {}),
     });
+    if (narrow) showResultAfterClose.current = true;
+    else reveal(stage.current);
   }
 
   function restoreSettings(id: string) {
@@ -537,6 +590,7 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
             endFrame,
           },
         });
+        reveal(composer.current);
       },
       onError: error => {
         if (current() === snapshot) setRestoreError(errorText(error, "videoStudio.restoreFailed"));
@@ -596,25 +650,18 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
   }
 
   function uploadFrame(slot: FrameSlot, file: File) {
-    if (!settings || !model || !allowsFrame(model, settings.mode, slot) || locked || uploading || restore.isPending)
+    if (
+      !settings ||
+      !model ||
+      !allowsFrame(model, settings.mode, slot) ||
+      locked ||
+      uploading ||
+      restore.isPending ||
+      queryClient.isMutating({ mutationKey: frameUploadKey, exact: true })
+    )
       return;
-    setUploadError(undefined);
     edit({ settings });
-    upload.mutate(file, {
-      onSuccess: frame => {
-        const catalog = queryClient.getQueryData(contextOptions(ownerId).queryKey);
-        if (
-          current()?.settings === settings &&
-          frame.projectId === catalog?.projectId &&
-          catalog?.capabilities.some(item => modelKey(item) === modelKey(settings))
-        ) {
-          edit({ settings: { ...settings, [slot]: frame } });
-        }
-      },
-      onError: error => {
-        if (current()?.settings === settings) setUploadError(errorText(error, "videoStudio.uploadFailed"));
-      },
-    });
+    upload.mutate({ file, slot, settings });
   }
 
   async function uploadReference(kind: VideoStudioReferenceAsset["kind"], file: File, fieldKey: string | null = null) {
@@ -637,17 +684,15 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
       others.filter(ref => ref.kind === kind).length >= model.referenceLimits[LIMIT_KEYS[kind]]
     )
       throw new Error(t("videoStudio.incompatibleReferences"));
-    setUploadError(undefined);
     edit({ settings });
-    const snapshot = current();
     let ref: VideoStudioReferenceAsset;
     try {
       ref = await referenceUpload.mutateAsync({ kind, file });
     } catch (error) {
-      if (current() === snapshot) throw error;
+      if (current()?.settings === settings) throw error;
       return;
     }
-    if (current() !== snapshot) return;
+    if (current()?.settings !== settings) return;
     const latest = queryClient.getQueryData(contextOptions(ownerId).queryKey);
     if (
       projectId !== latest?.projectId ||
@@ -681,20 +726,28 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
     else edit(patch);
   }
 
-  function refresh() {
-    void context.refetch();
-    void history.refetch();
-    if (selectedId) void detail.refetch();
+  async function refresh() {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await Promise.all([context.refetch(), history.refetch(), selectedId && detail.refetch()]);
+    } finally {
+      setRefreshing(false);
+    }
   }
 
+  const refreshLabel = t(refreshing ? "common.refreshing" : "imageStudio.refresh");
   const refreshButton = (
     <Button
       type="button"
       variant="ghost"
       size="icon-sm"
-      aria-label={t("imageStudio.refresh")}
-      title={t("imageStudio.refresh")}
-      onClick={refresh}
+      className="video-studio-refresh"
+      aria-label={refreshLabel}
+      aria-disabled={refreshing || undefined}
+      aria-busy={refreshing}
+      title={refreshLabel}
+      onClick={() => void refresh()}
     >
       <ArrowClockwise aria-hidden />
     </Button>
@@ -704,10 +757,12 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
       type="button"
       variant="ghost"
       size="sm"
+      ref={historyTrigger}
+      className="video-studio-history-toggle"
       aria-label={t(narrow || !railOpen ? "imageStudio.expandHistory" : "imageStudio.collapseHistory")}
       aria-expanded={narrow ? undefined : railOpen}
       aria-controls={narrow ? undefined : historyId}
-      onClick={narrow ? undefined : () => setRailOpen(!railOpen)}
+      onClick={narrow ? undefined : () => setHistoryPreference(!railOpen)}
     >
       <ClockCounterClockwise data-icon="inline-start" aria-hidden />
       {t("imageStudio.historyShort")}
@@ -762,6 +817,44 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
     .map(field => ({ ...field, enabledWhen: null }));
   const secondsOptions = model ? durationOptions(model) : [];
   const secondsId = `${fieldId}-duration`;
+  const fixedMode = !invalidMode && model?.modes.length === 1;
+
+  const issues = [...validation, ...referenceErrors];
+  if (model && settings && !locked) {
+    if (!definition && !prompt) issues.unshift(t("videoStudio.promptNeeded"));
+    if (settings.mode === "START_END") {
+      if (!settings.startFrame) issues.push(t("videoStudio.frameNeeded", { 0: t(FRAME_LABELS.startFrame) }));
+      if (model.requiresEndFrame && !settings.endFrame)
+        issues.push(t("videoStudio.frameNeeded", { 0: t(FRAME_LABELS.endFrame) }));
+    }
+  }
+  const outputRatio =
+    model?.aspectRatios.length && settings?.aspectRatio
+      ? settings.aspectRatio
+      : workflow?.activeFields.map(field => workflowRatio(field, workflow.effectiveValues[field.key])).find(Boolean);
+  const ratioParts = outputRatio?.match(/^([1-9]\d*):([1-9]\d*)$/);
+  const frameShape = ratioParts ? Number(ratioParts[1]) / Number(ratioParts[2]) : null;
+  const referenceCount = settings
+    ? settings.references.length + Number(!!settings.startFrame) + Number(!!settings.endFrame)
+    : 0;
+  const outputSummary = [
+    outputRatio,
+    model?.videoResolutions.length ? settings?.videoResolution : null,
+    duration && !invalidDuration ? t("agent.approval.seconds", { 0: duration }) : null,
+    referenceCount ? t("videoStudio.referenceCount", { 0: referenceCount }) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const pendingReceipt = !!draft.command && !accepting;
+  const busyLabel = accepting
+    ? t("videoStudio.submitting")
+    : restore.isPending
+      ? t("videoStudio.restorePending")
+      : uploadingFrame
+        ? t("imageStudio.uploading")
+        : uploadingReference
+          ? t("media.runningHub.uploading")
+          : null;
 
   return (
     <div className="video-studio">
@@ -779,6 +872,15 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
               <DialogTrigger asChild>{historyButton}</DialogTrigger>
               <DialogContent
                 className="video-studio-history-drawer"
+                onCloseAutoFocus={event => {
+                  // Restore keyboard focus without moving the scroller back to the header.
+                  event.preventDefault();
+                  historyTrigger.current?.focus({ preventScroll: true });
+                  if (showResultAfterClose.current) {
+                    showResultAfterClose.current = false;
+                    reveal(stage.current);
+                  }
+                }}
                 aria-describedby={undefined}
                 showCloseButton={false}
                 fullscreen
@@ -800,28 +902,370 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
         </div>
       </header>
       <div className="video-studio-workspace">
-        <div className="video-studio-stage">
-          {detail.error ? (
-            <Notice tone="danger" title={t("imageStudio.statusFailed")}>
-              <Button type="button" variant="outline" size="sm" onClick={() => void detail.refetch()}>
-                {t("common.retryRead")}
-              </Button>
-            </Notice>
-          ) : null}
-          <VideoStudioResults key={selected?.id ?? "none"} generation={selected} />
-          {selected ? (
-            <div className="video-studio-restore">
+        <div className="video-studio-desk">
+          <form
+            ref={composer}
+            className="video-studio-composer"
+            aria-label={t("videoStudio.composer")}
+            onSubmit={submit}
+          >
+            {context.isPending ? <LoadingState compact label={t("videoStudio.loadingModels")} /> : null}
+            {context.error ? (
+              <Notice title={t("videoStudio.loadFailed")} tone="danger">
+                <Button type="button" variant="outline" size="sm" onClick={() => void context.refetch()}>
+                  {t("imageStudio.retryModels")}
+                </Button>
+              </Notice>
+            ) : null}
+            {context.isSuccess && !models.length ? (
+              <Notice title={t("videoStudio.noModels")}>
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/settings/media">{t("imageStudio.configureModels")}</Link>
+                </Button>
+              </Notice>
+            ) : null}
+            {stale && context.isSuccess ? (
+              <Notice tone="warning" title={t("imageStudio.staleModel")}>
+                {t("imageStudio.unavailableModelHint")}
+              </Notice>
+            ) : null}
+            {restoreError ? (
+              <Notice tone="danger" title={t("videoStudio.restoreFailed")}>
+                {restoreError}
+              </Notice>
+            ) : null}
+            {draft.frameUploadError ? (
+              <Notice tone="danger" title={t("videoStudio.uploadFailed")}>
+                {draft.frameUploadError}
+              </Notice>
+            ) : null}
+
+            <FieldGroup className="video-studio-fields">
+              <Field className="video-studio-shot">
+                <div className="video-studio-shot-label">
+                  <FieldLabel htmlFor={`${fieldId}-prompt`}>{t("videoStudio.shotDescription")}</FieldLabel>
+                  {draft.prompt.length > 0 ? (
+                    <span>
+                      {draft.prompt.length} / {promptLimit}
+                    </span>
+                  ) : null}
+                </div>
+                <Textarea
+                  id={`${fieldId}-prompt`}
+                  value={draft.prompt}
+                  placeholder={t("videoStudio.promptPlaceholder")}
+                  maxLength={promptLimit}
+                  rows={3}
+                  variant="ghost"
+                  aria-invalid={draft.prompt.trim().length > promptLimit || undefined}
+                  readOnly={locked || uploadingReference}
+                  onChange={event => editPrompt(event.target.value, event.target.id)}
+                />
+              </Field>
+              {promptSource ? (
+                <div className="video-studio-prompt-source">
+                  <p role="status">
+                    {t("imageStudio.historyPromptLoaded", { 0: `#${promptSource.id.slice(0, 8).toUpperCase()}` })}
+                    <span>{promptSource.prompt}</span>
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="content"
+                    disabled={locked || uploadingReference}
+                    onClick={() => edit({ prompt: promptSource.previous, promptSource: null })}
+                  >
+                    {t("imageStudio.undoHistoryPrompt")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="content"
+                    disabled={!canRestore}
+                    onClick={() => restoreSettings(promptSource.id)}
+                  >
+                    {t("videoStudio.restoreSourceSettings")}
+                  </Button>
+                </div>
+              ) : null}
+              {settings ? (
+                <FieldGroup className="video-studio-options">
+                  <Field className="video-studio-model">
+                    <div className="video-studio-model-label">
+                      <FieldLabel htmlFor={`${fieldId}-model`}>{t("common.model")}</FieldLabel>
+                      {fixedMode ? (
+                        <span>
+                          <span className="sr-only">{t("videoStudio.mode")} </span>
+                          {t(MODE_LABELS[settings.mode])}
+                        </span>
+                      ) : null}
+                    </div>
+                    <Select
+                      id={`${fieldId}-model`}
+                      value={modelKey(settings)}
+                      icon={<Cube aria-hidden />}
+                      optionDetails={Object.fromEntries(
+                        models.map(item => [
+                          modelKey(item),
+                          { description: `${item.connectionName} · v${item.capabilityVersion}` },
+                        ]),
+                      )}
+                      disabled={inactiveControls || !models.length}
+                      onChange={event => {
+                        const next = models.find(item => modelKey(item) === event.target.value);
+                        if (next) changeSettings(next);
+                      }}
+                    >
+                      {stale ? (
+                        <option value={modelKey(settings)} disabled>
+                          {t("imageStudio.unavailableModel")} · v{settings.capabilityVersion}
+                        </option>
+                      ) : null}
+                      {models.map(item => (
+                        <option key={modelKey(item)} value={modelKey(item)}>
+                          {models.some(other => other !== item && other.name === item.name)
+                            ? `${item.name} · ${item.connectionName} · v${item.capabilityVersion}`
+                            : item.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  {!fixedMode ? (
+                    <Field data-invalid={invalidMode || undefined}>
+                      <FieldLabel htmlFor={`${fieldId}-mode`}>{t("videoStudio.mode")}</FieldLabel>
+                      <Select
+                        id={`${fieldId}-mode`}
+                        value={settings.mode}
+                        disabled={inactiveControls || !model}
+                        aria-invalid={invalidMode || undefined}
+                        onChange={event => {
+                          const mode = model?.modes.find(item => item === event.target.value);
+                          if (model && mode) changeSettings(model, mode);
+                        }}
+                      >
+                        {!model || invalidMode ? (
+                          <option value={settings.mode} disabled>
+                            {t(MODE_LABELS[settings.mode])}
+                          </option>
+                        ) : null}
+                        {model?.modes.map(mode => (
+                          <option key={mode} value={mode}>
+                            {t(MODE_LABELS[mode])}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  ) : null}
+                  {model?.aspectRatios.length || (stale && settings.aspectRatio) ? (
+                    <StudioSelect
+                      id={`${fieldId}-ratio`}
+                      label={t("media.editor.aspectRatio")}
+                      value={settings.aspectRatio}
+                      options={model?.aspectRatios ?? []}
+                      nativeDefault={model?.defaultAspectRatio}
+                      disabled={inactiveControls || !model}
+                      invalid={invalidRatio}
+                      onChange={value => {
+                        const aspectRatio = model?.aspectRatios.find(item => item === value) ?? null;
+                        edit({ settings: { ...settings, aspectRatio } });
+                      }}
+                    />
+                  ) : null}
+                  {model?.videoResolutions.length || (stale && settings.videoResolution) ? (
+                    <StudioSelect
+                      id={`${fieldId}-resolution`}
+                      label={t("media.editor.resolution")}
+                      value={settings.videoResolution}
+                      options={model?.videoResolutions ?? []}
+                      nativeDefault={model?.defaultVideoResolution}
+                      disabled={inactiveControls || !model}
+                      invalid={invalidResolution}
+                      onChange={videoResolution => edit({ settings: { ...settings, videoResolution } })}
+                    />
+                  ) : null}
+                  {hasDuration || (stale && settings.duration !== "") ? (
+                    <Field data-invalid={invalidDuration || undefined}>
+                      <FieldLabel htmlFor={secondsId}>{t("videoStudio.seconds")}</FieldLabel>
+                      {secondsOptions.length ? (
+                        <Select
+                          id={secondsId}
+                          value={settings.duration}
+                          disabled={inactiveControls}
+                          aria-invalid={invalidDuration || undefined}
+                          onChange={event =>
+                            model && applyChoice(model, { ...settings, duration: event.target.value }, secondsId)
+                          }
+                        >
+                          {invalidDuration ? (
+                            <option value={settings.duration} disabled>
+                              {settings.duration}
+                            </option>
+                          ) : null}
+                          {secondsOptions.map(option => (
+                            <option key={String(option.value)} value={String(option.value)}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </Select>
+                      ) : (
+                        <Input
+                          id={secondsId}
+                          type="number"
+                          inputMode="numeric"
+                          min={model?.minDurationSeconds ?? undefined}
+                          max={model?.maxDurationSeconds ?? undefined}
+                          step={1}
+                          aria-invalid={invalidDuration || undefined}
+                          aria-describedby={invalidDuration ? `${secondsId}-range` : undefined}
+                          disabled={inactiveControls || !model}
+                          value={settings.duration}
+                          onChange={event =>
+                            model && applyChoice(model, { ...settings, duration: event.target.value }, secondsId)
+                          }
+                        />
+                      )}
+                      {invalidDuration &&
+                      !secondsOptions.length &&
+                      model?.minDurationSeconds != null &&
+                      model.maxDurationSeconds != null ? (
+                        <FieldDescription id={`${secondsId}-range`}>
+                          {t("videoStudio.durationRange", { 0: model.minDurationSeconds, 1: model.maxDurationSeconds })}
+                        </FieldDescription>
+                      ) : null}
+                    </Field>
+                  ) : null}
+                </FieldGroup>
+              ) : null}
+              {settings ? (
+                <VideoStudioInputs
+                  key={`${modelKey(settings)}:${settings.mode}`}
+                  model={model}
+                  settings={settings}
+                  fields={workflowControls ?? []}
+                  values={values}
+                  labels={labels}
+                  disabled={inactiveControls}
+                  restoring={restore.isPending}
+                  onChange={changeWorkflowField}
+                  onUploadFrame={uploadFrame}
+                  onRemoveFrame={slot => edit({ settings: { ...settings, [slot]: null } })}
+                  onUploadReference={uploadReference}
+                  onRemoveReference={(index, trigger) => {
+                    const next = { ...settings, references: settings.references.filter((_, i) => i !== index) };
+                    if (model) applyChoice(model, next, trigger);
+                    else edit({ settings: next });
+                  }}
+                />
+              ) : null}
+            </FieldGroup>
+            <div className="video-studio-composer-actions" data-receipt={pendingReceipt || undefined}>
+              <div className="video-studio-submit-context">
+                {busyLabel ? (
+                  <div className="video-studio-operation" role="status" aria-label={busyLabel}>
+                    <span className="video-studio-operation-mark" aria-hidden />
+                    {busyLabel}
+                  </div>
+                ) : pendingReceipt ? (
+                  <div className="video-studio-receipt" role="status" id={`${fieldId}-receipt`}>
+                    <strong>{t("imageStudio.acceptanceUncertain")}</strong>
+                    <span>{t("videoStudio.acceptanceUncertainHint")}</span>
+                  </div>
+                ) : (
+                  <>
+                    {outputSummary ? (
+                      <div className="video-studio-output-summary">
+                        {frameShape && Number.isFinite(frameShape) ? (
+                          <span
+                            aria-hidden
+                            className="video-studio-frame-shape"
+                            style={{ "--studio-ratio": frameShape } as CSSProperties}
+                          />
+                        ) : null}
+                        {outputSummary}
+                      </div>
+                    ) : null}
+                    <div id={`${fieldId}-requirements`} aria-live="polite">
+                      {issues.length > 1 ? (
+                        <details>
+                          <summary>{t("videoStudio.incompleteInputs", { 0: issues.length })}</summary>
+                          <ul className="video-studio-incompatible">
+                            {issues.map((issue, i) => (
+                              <li key={i}>{issue}</li>
+                            ))}
+                          </ul>
+                        </details>
+                      ) : (
+                        issues[0]
+                      )}
+                    </div>
+                    {draft.acceptanceError ? (
+                      <span className="video-studio-submit-error" role="alert">
+                        {t("imageStudio.submitFailed")} · {draft.acceptanceError}
+                      </span>
+                    ) : null}
+                  </>
+                )}
+              </div>
               <Button
-                type="button"
-                variant="outline"
-                size="content"
-                disabled={!canRestore}
-                onClick={() => restoreSettings(selected.id)}
+                className="video-studio-generate"
+                type={pendingReceipt ? "button" : "submit"}
+                size="lg"
+                disabled={!canGenerate && !pendingReceipt && !accepting}
+                aria-disabled={accepting || undefined}
+                aria-busy={accepting || undefined}
+                aria-describedby={
+                  pendingReceipt
+                    ? `${fieldId}-receipt`
+                    : issues.length && !busyLabel
+                      ? `${fieldId}-requirements`
+                      : undefined
+                }
+                onClick={event => {
+                  if (accepting) {
+                    event.preventDefault();
+                    return;
+                  }
+                  if (!pendingReceipt) return;
+                  event.preventDefault();
+                  const command = current()?.command;
+                  if (command && !queryClient.isMutating({ mutationKey: acceptanceKey, exact: true }))
+                    accept.mutate(command);
+                }}
               >
-                {t("videoStudio.restoreSettings")}
+                {pendingReceipt ? <ArrowClockwise aria-hidden /> : null}
+                {t(pendingReceipt ? "imageStudio.retryAcceptance" : "videoStudio.generate")}
+                {!pendingReceipt ? <ArrowRight data-icon="inline-end" aria-hidden /> : null}
               </Button>
             </div>
-          ) : null}
+          </form>
+          <div ref={stage} className="video-studio-stage">
+            {detail.error ? (
+              <Notice tone="danger" title={t("imageStudio.statusFailed")}>
+                <Button type="button" variant="ghost" size="sm" onClick={() => void detail.refetch()}>
+                  {t("common.retryRead")}
+                </Button>
+              </Notice>
+            ) : null}
+            {selected || (!history.isPending && !detail.isFetching && !detail.error && !history.error) ? (
+              <VideoStudioResults
+                key={selected?.id ?? "none"}
+                generation={selected}
+                restoreAction={
+                  selected ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="content"
+                      disabled={!canRestore}
+                      onClick={() => restoreSettings(selected.id)}
+                    >
+                      {t("videoStudio.restoreSettings")}
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ) : null}
+          </div>
         </div>
         {!narrow ? (
           <aside
@@ -835,341 +1279,6 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
           </aside>
         ) : null}
       </div>
-      <form className="video-studio-composer" aria-label={t("imageStudio.parameters")} onSubmit={submit}>
-        {context.isPending ? <LoadingState compact label={t("videoStudio.loadingModels")} /> : null}
-        {context.error ? (
-          <Notice title={t("videoStudio.loadFailed")} tone="danger">
-            <Button type="button" variant="outline" size="sm" onClick={() => void context.refetch()}>
-              {t("imageStudio.retryModels")}
-            </Button>
-          </Notice>
-        ) : null}
-        {context.isSuccess && !models.length ? (
-          <Notice title={t("videoStudio.noModels")}>
-            <Button asChild variant="outline" size="sm">
-              <Link to="/settings/media">{t("imageStudio.configureModels")}</Link>
-            </Button>
-          </Notice>
-        ) : null}
-        {stale && context.isSuccess ? (
-          <Notice tone="warning" title={t("imageStudio.staleModel")}>
-            {t("imageStudio.unavailableModelHint")}
-          </Notice>
-        ) : null}
-        {accepting ? <LoadingState compact label={t("imageStudio.sendingRequest")} /> : null}
-        {draft.command && !accepting ? (
-          <Notice tone="warning" title={t("imageStudio.acceptanceUncertain")}>
-            <p>{t("videoStudio.acceptanceUncertainHint")}</p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const command = current()?.command;
-                if (command && !queryClient.isMutating({ mutationKey: acceptanceKey, exact: true }))
-                  accept.mutate(command);
-              }}
-            >
-              {t("imageStudio.retryAcceptance")}
-            </Button>
-          </Notice>
-        ) : null}
-        {draft.acceptanceError ? (
-          <Notice tone="danger" title={t("imageStudio.submitFailed")}>
-            {draft.acceptanceError}
-          </Notice>
-        ) : null}
-        {restore.isPending ? <LoadingState compact label={t("videoStudio.restorePending")} /> : null}
-        {restoreError ? (
-          <Notice tone="danger" title={t("videoStudio.restoreFailed")}>
-            {restoreError}
-          </Notice>
-        ) : null}
-        {upload.isPending ? <LoadingState compact label={t("imageStudio.uploading")} /> : null}
-        {uploadingReference && !definition ? <LoadingState compact label={t("media.runningHub.uploading")} /> : null}
-        {uploadError ? (
-          <Notice
-            tone="danger"
-            title={t(settings?.mode === "START_END" ? "videoStudio.uploadFailed" : "media.runningHub.uploadFailed")}
-          >
-            {uploadError}
-          </Notice>
-        ) : null}
-
-        <FieldGroup className="video-studio-fields">
-          <Field>
-            <FieldLabel htmlFor={`${fieldId}-prompt`}>{t("imageStudio.prompt")}</FieldLabel>
-            <Textarea
-              id={`${fieldId}-prompt`}
-              value={draft.prompt}
-              placeholder={t("videoStudio.promptPlaceholder")}
-              maxLength={MAX_PROMPT_LENGTH}
-              rows={3}
-              readOnly={locked || uploadingReference}
-              onChange={event => editPrompt(event.target.value, event.target.id)}
-            />
-          </Field>
-          {promptSource ? (
-            <div className="video-studio-prompt-source">
-              <p role="status">
-                {t("imageStudio.historyPromptLoaded", { 0: `#${promptSource.id.slice(0, 8).toUpperCase()}` })}
-                <span>{promptSource.prompt}</span>
-              </p>
-              <Button
-                type="button"
-                variant="ghost"
-                size="content"
-                disabled={locked || uploadingReference}
-                onClick={() => edit({ prompt: promptSource.previous, promptSource: null })}
-              >
-                {t("imageStudio.undoHistoryPrompt")}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="content"
-                disabled={!canRestore}
-                onClick={() => restoreSettings(promptSource.id)}
-              >
-                {t("videoStudio.restoreSourceSettings")}
-              </Button>
-            </div>
-          ) : null}
-          {settings ? (
-            <FieldGroup className="video-studio-options">
-              <Field>
-                <FieldLabel htmlFor={`${fieldId}-model`}>{t("common.model")}</FieldLabel>
-                <Select
-                  id={`${fieldId}-model`}
-                  value={modelKey(settings)}
-                  disabled={inactiveControls || !models.length}
-                  onChange={event => {
-                    const next = models.find(item => modelKey(item) === event.target.value);
-                    if (next) changeSettings(next);
-                  }}
-                >
-                  {stale ? (
-                    <option value={modelKey(settings)} disabled>
-                      {t("imageStudio.unavailableModel")} · v{settings.capabilityVersion}
-                    </option>
-                  ) : null}
-                  {models.map(item => (
-                    <option key={modelKey(item)} value={modelKey(item)}>
-                      {item.name} · {item.connectionName}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field data-invalid={invalidMode || undefined}>
-                <FieldLabel htmlFor={`${fieldId}-mode`}>{t("videoStudio.mode")}</FieldLabel>
-                <Select
-                  id={`${fieldId}-mode`}
-                  value={settings.mode}
-                  disabled={inactiveControls || !model}
-                  aria-invalid={invalidMode || undefined}
-                  onChange={event => {
-                    const mode = model?.modes.find(item => item === event.target.value);
-                    if (model && mode) changeSettings(model, mode);
-                  }}
-                >
-                  {!model || invalidMode ? (
-                    <option value={settings.mode} disabled>
-                      {t(MODE_LABELS[settings.mode])}
-                    </option>
-                  ) : null}
-                  {model?.modes.map(mode => (
-                    <option key={mode} value={mode}>
-                      {t(MODE_LABELS[mode])}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              {model?.aspectRatios.length || (stale && settings.aspectRatio) ? (
-                <StudioSelect
-                  id={`${fieldId}-ratio`}
-                  label={t("media.editor.aspectRatio")}
-                  value={settings.aspectRatio}
-                  options={model?.aspectRatios ?? []}
-                  nativeDefault={model?.defaultAspectRatio}
-                  disabled={inactiveControls || !model}
-                  invalid={invalidRatio}
-                  onChange={value => {
-                    const aspectRatio = model?.aspectRatios.find(item => item === value) ?? null;
-                    edit({ settings: { ...settings, aspectRatio } });
-                  }}
-                />
-              ) : null}
-              {model?.videoResolutions.length || (stale && settings.videoResolution) ? (
-                <StudioSelect
-                  id={`${fieldId}-resolution`}
-                  label={t("media.editor.resolution")}
-                  value={settings.videoResolution}
-                  options={model?.videoResolutions ?? []}
-                  nativeDefault={model?.defaultVideoResolution}
-                  disabled={inactiveControls || !model}
-                  invalid={invalidResolution}
-                  onChange={videoResolution => edit({ settings: { ...settings, videoResolution } })}
-                />
-              ) : null}
-              {hasDuration || (stale && settings.duration !== "") ? (
-                <Field data-invalid={invalidDuration || undefined}>
-                  <FieldLabel htmlFor={secondsId}>{t("videoStudio.seconds")}</FieldLabel>
-                  {secondsOptions.length ? (
-                    <Select
-                      id={secondsId}
-                      value={settings.duration}
-                      disabled={inactiveControls}
-                      aria-invalid={invalidDuration || undefined}
-                      onChange={event =>
-                        model && applyChoice(model, { ...settings, duration: event.target.value }, secondsId)
-                      }
-                    >
-                      {invalidDuration ? (
-                        <option value={settings.duration} disabled>
-                          {settings.duration}
-                        </option>
-                      ) : null}
-                      {secondsOptions.map(option => (
-                        <option key={String(option.value)} value={String(option.value)}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </Select>
-                  ) : (
-                    <Input
-                      id={secondsId}
-                      type="number"
-                      inputMode="numeric"
-                      min={model?.minDurationSeconds ?? undefined}
-                      max={model?.maxDurationSeconds ?? undefined}
-                      step={1}
-                      aria-invalid={invalidDuration || undefined}
-                      aria-describedby={invalidDuration ? `${secondsId}-range` : undefined}
-                      disabled={inactiveControls || !model}
-                      value={settings.duration}
-                      onChange={event =>
-                        model && applyChoice(model, { ...settings, duration: event.target.value }, secondsId)
-                      }
-                    />
-                  )}
-                  {invalidDuration &&
-                  !secondsOptions.length &&
-                  model?.minDurationSeconds != null &&
-                  model.maxDurationSeconds != null ? (
-                    <FieldDescription id={`${secondsId}-range`}>
-                      {t("videoStudio.durationRange", { 0: model.minDurationSeconds, 1: model.maxDurationSeconds })}
-                    </FieldDescription>
-                  ) : null}
-                </Field>
-              ) : null}
-            </FieldGroup>
-          ) : null}
-          {settings?.mode === "START_END" || settings?.startFrame || settings?.endFrame ? (
-            <FieldGroup className="video-studio-frames">
-              {studioFrames(settings).map(([slot, frame]) => {
-                const supported = !!model && allowsFrame(model, settings.mode, slot);
-                return supported || frame ? (
-                  <FramePicker
-                    key={slot}
-                    slot={slot}
-                    frame={frame}
-                    required={slot === "startFrame" || !!model?.requiresEndFrame}
-                    canUpload={supported && !inactiveControls && !restore.isPending}
-                    canRemove={!inactiveControls}
-                    onUpload={file => uploadFrame(slot, file)}
-                    onRemove={() => edit({ settings: { ...settings, [slot]: null } })}
-                  />
-                ) : null;
-              })}
-            </FieldGroup>
-          ) : null}
-          {workflowControls?.length ? (
-            <RunningHubForm
-              key={model && modelKey(model)}
-              definition={{ fields: workflowControls }}
-              values={values}
-              prompt={prompt}
-              durationSeconds={duration}
-              choices={choices}
-              disabled={inactiveControls || restore.isPending}
-              onChange={changeWorkflowField}
-              uploadOnlyMedia
-              onUpload={async (field, file) => {
-                if (field.type === "IMAGE" || field.type === "VIDEO" || field.type === "AUDIO") {
-                  await uploadReference(field.type, file, field.key);
-                }
-              }}
-            />
-          ) : null}
-          {settings && model && settings.mode === "GENERAL_REFERENCE" && !definition ? (
-            <FieldGroup className="video-studio-options">
-              {REFERENCE_KINDS.map(kind => {
-                const limit = model.referenceLimits[LIMIT_KEYS[kind]];
-                if (!limit) return null;
-                const count = settings.references.filter(ref => ref.kind === kind).length;
-                const id = `${fieldId}-${kind}`;
-                return (
-                  <Field key={kind}>
-                    <FieldLabel htmlFor={id}>
-                      {t("media.runningHub.uploadNamed", { 0: t(KIND_LABELS[kind]) })} ({count}/{limit})
-                    </FieldLabel>
-                    <Input
-                      id={id}
-                      type="file"
-                      accept={MEDIA_FILE_ACCEPT[kind]}
-                      disabled={
-                        inactiveControls ||
-                        restore.isPending ||
-                        count >= limit ||
-                        settings.references.length >= MAX_REFERENCES
-                      }
-                      onChange={event => {
-                        const file = event.currentTarget.files?.[0];
-                        event.currentTarget.value = "";
-                        if (file)
-                          void uploadReference(kind, file).catch(error =>
-                            setUploadError(error instanceof Error ? error.message : t("media.runningHub.uploadFailed")),
-                          );
-                      }}
-                    />
-                  </Field>
-                );
-              })}
-            </FieldGroup>
-          ) : null}
-          {settings?.references.length ? (
-            <ul className="video-studio-references" aria-label={t("common.mixedReference")}>
-              {settings.references.map((ref, index) => (
-                <ReferencePreview
-                  key={`${ref.fieldKey ?? ref.kind}:${ref.versionId}:${index}`}
-                  reference={ref}
-                  label={labels[index]!}
-                  disabled={inactiveControls}
-                  onRemove={event => {
-                    const next = { ...settings, references: settings.references.filter((_, i) => i !== index) };
-                    if (model) applyChoice(model, next, event.currentTarget.id);
-                    else edit({ settings: next });
-                  }}
-                  removeId={`${fieldId}-reference-${index}`}
-                />
-              ))}
-            </ul>
-          ) : null}
-          {validation.length || referenceErrors.length ? (
-            <ul className="video-studio-incompatible" aria-live="polite">
-              {[...validation, ...referenceErrors].map((message, index) => (
-                <li key={index}>{message}</li>
-              ))}
-            </ul>
-          ) : null}
-        </FieldGroup>
-        <div className="video-studio-composer-actions">
-          <Button type="submit" size="lg" disabled={!canGenerate}>
-            <Sparkle data-icon="inline-start" aria-hidden />
-            {t("videoStudio.generate")}
-          </Button>
-        </div>
-      </form>
       <Dialog
         open={!!change}
         onOpenChange={open => {
@@ -1184,7 +1293,9 @@ function VideoStudioWorkspace({ ownerId }: { ownerId: string }) {
           }}
           onCloseAutoFocus={event => {
             event.preventDefault();
-            document.getElementById(changeTrigger.current ?? "")?.focus();
+            (
+              document.getElementById(changeTrigger.current ?? "") ?? document.getElementById(`${fieldId}-model`)
+            )?.focus();
           }}
         >
           <DialogHeader>
@@ -1228,6 +1339,7 @@ function HistoryEntry({
   onChoose: () => void;
 }) {
   const cover = row.task.results[0];
+  const [unavailableCover, setUnavailableCover] = useState<string>();
   return (
     <li>
       <Button
@@ -1239,10 +1351,19 @@ function HistoryEntry({
         onClick={onChoose}
       >
         <span className="video-studio-history-cover" aria-hidden>
-          {cover ? <img src={assetThumbnailUrl(row.projectId, cover.assetId)} alt="" loading="lazy" /> : <FilmStrip />}
+          {cover && unavailableCover !== cover.assetId ? (
+            <img
+              src={assetThumbnailUrl(row.projectId, cover.assetId)}
+              alt=""
+              loading="lazy"
+              onError={() => setUnavailableCover(cover.assetId)}
+            />
+          ) : (
+            <FilmStrip />
+          )}
         </span>
         <span className="video-studio-history-copy">
-          <strong title={row.prompt}>{row.prompt}</strong>
+          <strong title={row.prompt || undefined}>{row.prompt || t("storyboard.untitled")}</strong>
           <span>
             {t(STATUS_LABELS[row.task.status])} · {t("videoStudio.historyResultCount", { 0: row.task.results.length })}
           </span>
@@ -1296,111 +1417,6 @@ function StudioSelect({
           </option>
         ))}
       </Select>
-    </Field>
-  );
-}
-
-function ReferencePreview({
-  reference,
-  label,
-  disabled,
-  onRemove,
-  removeId,
-}: {
-  reference: Reference;
-  label: string;
-  disabled: boolean;
-  onRemove: MouseEventHandler<HTMLButtonElement>;
-  removeId: string;
-}) {
-  const { kind, projectId, assetId } = reference;
-  const source = assetContentUrl(projectId, assetId);
-  return (
-    <li>
-      <div className="video-studio-reference-header">
-        <span>{label}</span>
-        <Button
-          id={removeId}
-          type="button"
-          size="icon-sm"
-          variant="ghost"
-          disabled={disabled}
-          aria-label={t("videoStudio.removeFrame", { 0: label })}
-          onClick={onRemove}
-        >
-          <X aria-hidden />
-        </Button>
-      </div>
-      {kind === "IMAGE" ? (
-        <img src={assetThumbnailUrl(projectId, assetId)} alt={label} loading="lazy" />
-      ) : kind === "VIDEO" ? (
-        <video src={source} controls preload="none" aria-label={label} />
-      ) : (
-        <audio src={source} controls preload="none" aria-label={label} />
-      )}
-    </li>
-  );
-}
-
-function FramePicker({
-  slot,
-  frame,
-  required,
-  canUpload,
-  canRemove,
-  onUpload,
-  onRemove,
-}: {
-  slot: FrameSlot;
-  frame: VideoStudioFrame | null;
-  required: boolean;
-  canUpload: boolean;
-  canRemove: boolean;
-  onUpload: (file: File) => void;
-  onRemove: () => void;
-}) {
-  const inputId = useId();
-  const input = useRef<HTMLInputElement>(null);
-  const label = t(FRAME_LABELS[slot]);
-  const uploadLabel = t("videoStudio.uploadFrame", { 0: label });
-  return (
-    <Field className="video-studio-frame">
-      <FieldLabel htmlFor={inputId}>{label}</FieldLabel>
-      <FieldDescription>{t(required ? "videoStudio.requiredFrame" : "videoStudio.optionalFrame")}</FieldDescription>
-      <div className="video-studio-frame-actions">
-        {frame ? <img src={assetContentUrl(frame.projectId, frame.assetId)} alt={label} /> : null}
-        <input
-          id={inputId}
-          ref={input}
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          hidden
-          disabled={!canUpload}
-          onChange={event => {
-            const file = event.currentTarget.files?.[0];
-            event.currentTarget.value = "";
-            if (file) onUpload(file);
-          }}
-        />
-        {canUpload ? (
-          <Button type="button" size="content" variant="outline" onClick={() => input.current?.click()}>
-            <Plus data-icon="inline-start" aria-hidden />
-            {uploadLabel}
-          </Button>
-        ) : null}
-        {frame ? (
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            disabled={!canRemove}
-            aria-label={t("videoStudio.removeFrame", { 0: label })}
-            onClick={onRemove}
-          >
-            <X aria-hidden />
-          </Button>
-        ) : null}
-      </div>
     </Field>
   );
 }

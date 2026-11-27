@@ -27,7 +27,8 @@ class JooqVideoStudioRepository implements VideoStudioRepository {
     public void create(Generation row) {
         var t = VIDEO_STUDIO_GENERATION;
         dsl.insertInto(t).set(t.ID, row.id()).set(t.OWNER_ID, row.ownerId()).set(t.PROJECT_ID, row.projectId())
-                .set(t.TASK_ID, row.taskId()).set(t.COMMAND_KEY, row.commandKey()).set(t.REQUEST_HASH, row.requestHash())
+                .set(t.TASK_ID, row.taskId()).set(t.COMMAND_KEY, row.commandKey())
+                .set(t.REQUEST_HASH, row.requestHash())
                 .set(t.REQUEST_JSON, JSONB.valueOf(row.request().toString()))
                 .set(t.CREATED_AT, row.createdAt().atOffset(ZoneOffset.UTC)).execute();
     }
@@ -48,8 +49,10 @@ class JooqVideoStudioRepository implements VideoStudioRepository {
     public List<Generation> list(UUID owner, Generation before, int limit) {
         var t = VIDEO_STUDIO_GENERATION;
         var selected = dsl.selectFrom(t).where(t.OWNER_ID.eq(owner)).orderBy(t.CREATED_AT.desc(), t.ID.desc());
-        return (before == null ? selected.limit(limit)
-                : selected.seek(before.createdAt().atOffset(ZoneOffset.UTC), before.id()).limit(limit)).fetch(this::map);
+        return (before == null
+                ? selected.limit(limit)
+                : selected.seek(before.createdAt().atOffset(ZoneOffset.UTC), before.id()).limit(limit))
+                .fetch(this::map);
     }
 
     private Generation map(VideoStudioGenerationRecord row) {

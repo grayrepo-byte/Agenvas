@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { ImageGenerationParameters, SaveMediaDraftRequest } from "../../shared/api/client";
 
 export type MediaDraftRecovery = { request: SaveMediaDraftRequest; saving: boolean; error: Error | null };
+export type MediaRunIntent = { key: string; expectedDraftVersion: number };
 
 export type TextGenerationIntent = {
   key: string;
@@ -40,6 +41,10 @@ type CanvasInteractionState = {
   mediaDraftRecoveries: Record<string, MediaDraftRecovery>;
   setMediaDraftRecovery: (key: string, recovery: MediaDraftRecovery) => void;
   clearMediaDraftRecovery: (key: string) => void;
+  mediaRunIntents: Record<string, MediaRunIntent>;
+  setMediaRunIntent: (scope: string, intent: MediaRunIntent) => void;
+  clearMediaRunIntent: (scope: string, intent: MediaRunIntent) => void;
+  clearMediaRunIntents: () => void;
   /** Memory-only prompts; closing a node editor is not a save or a generation. */
   textGenerationDrafts: Record<string, TextGenerationDraft>;
   setTextGenerationPrompt: (key: string, prompt: string) => void;
@@ -62,6 +67,17 @@ export const useCanvasStore = create<CanvasInteractionState>(set => ({
   saveState: "saved",
   imageRatioDrafts: {},
   mediaDraftRecoveries: {},
+  mediaRunIntents: {},
+  setMediaRunIntent: (scope, intent) =>
+    set(state => ({ mediaRunIntents: { ...state.mediaRunIntents, [scope]: intent } })),
+  clearMediaRunIntent: (scope, intent) =>
+    set(state => {
+      if (state.mediaRunIntents[scope] !== intent) return state;
+      const remaining = { ...state.mediaRunIntents };
+      delete remaining[scope];
+      return { mediaRunIntents: remaining };
+    }),
+  clearMediaRunIntents: () => set({ mediaRunIntents: {} }),
   textGenerationDrafts: {},
   setTextGenerationPrompt: (key, prompt) =>
     set(state => ({

@@ -198,7 +198,9 @@ public class ProjectEventHub {
 
     /** 对照持久化水位处理过期游标、批量补发事件和心跳。 */
     private void pollProject(ProjectChannel channel) {
-        List<Subscriber> subscribers = channel.subscribers;
+        // The read cursor and every recipient must come from the same registration snapshot.
+        // A reconnect during listAfter may need older rows than this page contains.
+        List<Subscriber> subscribers = List.copyOf(channel.subscribers);
         if (subscribers.isEmpty()) {
             return;
         }

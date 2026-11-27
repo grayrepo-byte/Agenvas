@@ -316,6 +316,84 @@ it("keeps a pending submission visible after leaving the route and coming back",
   expect(writes).toBe(1);
 });
 
+it.each([200, 422])("isolates a late HTTP %i receipt from a new session's pending command", async status => {
+  let finishFirst!: () => void;
+  let finishSecond!: () => void;
+  const first = new Promise<void>(resolve => {
+    finishFirst = resolve;
+  });
+  const second = new Promise<void>(resolve => {
+    finishSecond = resolve;
+  });
+  server.use(
+    http.post("/api/v1/image-studio/batches", async ({ request }) => {
+      const body = (await request.json()) as CreateImageStudioBatch;
+      const original = body.prompt === "first session";
+      await (original ? first : second);
+      return original && status === 422
+        ? HttpResponse.json({ message: "Rejected" }, { status })
+        : HttpResponse.json({ ...history, id: original ? "original" : "new", prompt: body.prompt });
+    }),
+    http.get("/api/v1/image-studio/batches/:id", () => HttpResponse.json(history)),
+  );
+  const user = userEvent.setup();
+  const oldClient = createQueryClient();
+  const visit = show("/image-studio", oldClient);
+  await user.type(await screen.findByRole("textbox", { name: "提示词" }), "first session");
+  await user.click(screen.getByRole("button", { name: "生成图片" }));
+  await screen.findByRole("heading", { name: "正在提交生图请求" });
+  visit.unmount();
+  useImageStudioDraftStore.getState().clear();
+  show();
+  try {
+    await user.type(await screen.findByRole("textbox", { name: "提示词" }), "second session");
+    await user.click(screen.getByRole("button", { name: "生成图片" }));
+    await screen.findByRole("heading", { name: "正在提交生图请求" });
+    finishFirst();
+    await waitFor(() => expect(oldClient.isMutating()).toBe(0));
+    const current = useImageStudioDraftStore.getState().owners["studio-owner"];
+    expect(current?.command?.request.prompt).toBe("second session");
+    expect(current?.awaitingHistory).toEqual([]);
+  } finally {
+    finishFirst();
+    finishSecond();
+  }
+});
+
+it("keeps a reference upload pending across navigation and discards it after sign-out", async () => {
+  let release!: () => void;
+  const receipt = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  const previousFetch = globalThis.fetch;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    if (input !== "/api/v1/image-studio/references") return previousFetch(input, init);
+    await receipt;
+    return HttpResponse.json(history.references[0]);
+  });
+  const client = createQueryClient();
+  const user = userEvent.setup();
+  const first = show("/image-studio", client);
+  await user.type(await screen.findByRole("textbox", { name: "提示词" }), "include this reference");
+  await user.upload(screen.getByLabelText("上传参考图"), new File(["x"], "reference.png", { type: "image/png" }));
+  await waitFor(() => expect(client.isMutating()).toBe(1));
+  first.unmount();
+  const revisit = show("/image-studio", client);
+  try {
+    expect(await screen.findByRole("button", { name: "生成图片" })).toBeDisabled();
+    expect(screen.getByLabelText("上传参考图")).toBeDisabled();
+    revisit.unmount();
+    useImageStudioDraftStore.getState().clear();
+    show();
+    await user.type(await screen.findByRole("textbox", { name: "提示词" }), "fresh draft");
+    release();
+    await waitFor(() => expect(client.isMutating()).toBe(0));
+    expect(useImageStudioDraftStore.getState().owners["studio-owner"]?.references).toEqual([]);
+  } finally {
+    release();
+  }
+});
+
 it("opens from main navigation without reading or choosing a canvas", async () => {
   show();
   expect(await screen.findByRole("heading", { name: "生图工作台" })).toBeInTheDocument();

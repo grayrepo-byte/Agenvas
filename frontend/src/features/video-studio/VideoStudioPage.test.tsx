@@ -121,7 +121,7 @@ function show(client = createQueryClient()) {
 }
 
 function prompt() {
-  return screen.getByRole("textbox", { name: t("imageStudio.prompt") });
+  return screen.getByRole("textbox", { name: t("videoStudio.shotDescription") });
 }
 
 function generate() {
@@ -169,7 +169,15 @@ it("shows configuration instead of a placeholder model and returns focus after k
   expect(generate()).toBeDisabled();
   expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   const trigger = screen.getByRole("button", { name: t("imageStudio.expandHistory") });
+  const stage = document.querySelector<HTMLElement>(".video-studio-stage")!;
+  const revealResult = vi.fn(() => document.activeElement);
+  stage.scrollIntoView = revealResult;
   trigger.focus();
+  await user.keyboard("{Enter}");
+  await screen.findByRole("dialog", { name: t("imageStudio.history") });
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(trigger).toHaveFocus());
+  expect(revealResult).not.toHaveBeenCalled();
   await user.keyboard("{Enter}");
   const drawer = within(await screen.findByRole("dialog", { name: t("imageStudio.history") }));
   expect(await drawer.findByText(/Other history record/)).toBeVisible();
@@ -177,6 +185,8 @@ it("shows configuration instead of a placeholder model and returns focus after k
   await user.click(drawer.getByRole("button", { name: t("videoStudio.moreHistory") }));
   await user.click(await drawer.findByRole("button", { name: /Original saved prompt/ }));
   await waitFor(() => expect(trigger).toHaveFocus());
+  await waitFor(() => expect(revealResult).toHaveBeenCalledWith({ block: "start", behavior: "instant" }));
+  expect(revealResult.mock.results[0]?.value).toBe(trigger);
   expect(prompt()).toHaveValue(SAVED.prompt);
   expect(asked).toHaveBeenCalledWith("next-record");
   await user.click(screen.getByRole("button", { name: t("imageStudio.undoHistoryPrompt") }));
@@ -210,7 +220,7 @@ it("validates integer seconds and confirms incompatible frames without discardin
   );
   show();
   const user = userEvent.setup();
-  await user.type(await screen.findByRole("textbox", { name: t("imageStudio.prompt") }), "Walk through frame");
+  await user.type(await screen.findByRole("textbox", { name: t("videoStudio.shotDescription") }), "Walk through frame");
   const seconds = await screen.findByRole("spinbutton", { name: t("videoStudio.seconds") });
   fireEvent.change(seconds, { target: { value: "4.5" } });
   expect(generate()).toBeDisabled();
@@ -254,6 +264,50 @@ it("validates integer seconds and confirms incompatible frames without discardin
   );
 });
 
+it.each([200, 422])("keeps a pending frame upload and its HTTP %i result across app navigation", async status => {
+  let release!: () => void;
+  const receipt = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  const previousFetch = globalThis.fetch;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    if (input !== `${BASE}/frames`) return previousFetch(input, init);
+    await receipt;
+    return status === 200
+      ? HttpResponse.json(FIRST)
+      : HttpResponse.json(
+          { detail: "Unsupported frame", code: "INVALID_MEDIA_TYPE", retryable: false },
+          { status, headers: { "Content-Type": "application/problem+json" } },
+        );
+  });
+  show();
+  const user = userEvent.setup();
+  await user.type(await screen.findByRole("textbox", { name: t("videoStudio.shotDescription") }), "A scene");
+  await select(user, t("videoStudio.mode"), t("videoStudio.frameMode"));
+  const label = t("videoStudio.startFrame");
+  try {
+    await user.upload(
+      screen.getByLabelText(label, { selector: "input" }),
+      new File(["x"], "start.png", { type: "image/png" }),
+    );
+    await screen.findByRole("status", { name: t("imageStudio.uploading") });
+    await user.click(screen.getByRole("link", { name: t("ui.pageShell.homeLabel") }));
+    await user.click(await screen.findByRole("link", { name: t("videoStudio.title") }));
+    expect(await screen.findByLabelText(label, { selector: "input" })).toBeDisabled();
+    await user.type(prompt(), " edited");
+  } finally {
+    release();
+  }
+  if (status === 200) {
+    expect(await screen.findByRole("img", { name: label })).toBeVisible();
+    await waitFor(() => expect(generate()).toBeEnabled());
+  } else {
+    expect(await screen.findByText("Unsupported frame")).toBeVisible();
+    await waitFor(() => expect(screen.getByLabelText(label, { selector: "input" })).toBeEnabled());
+  }
+  expect(prompt()).toHaveValue("A scene edited");
+});
+
 it("replays only the original frozen command after a lost receipt; provider UNKNOWN is not local uncertainty", async () => {
   const submitted: { key: string | null; body: string }[] = [];
   const accepted: VideoStudioGeneration = {
@@ -274,7 +328,7 @@ it("replays only the original frozen command after a lost receipt; provider UNKN
   );
   show();
   const user = userEvent.setup();
-  await user.type(await screen.findByRole("textbox", { name: t("imageStudio.prompt") }), accepted.prompt);
+  await user.type(await screen.findByRole("textbox", { name: t("videoStudio.shotDescription") }), accepted.prompt);
   await waitFor(() => expect(generate()).toBeEnabled());
   await user.click(generate());
   const check = await screen.findByRole("button", { name: t("imageStudio.retryAcceptance") });
@@ -324,7 +378,7 @@ it("restores the prompt source, not a later preview, only after both original fr
   );
   show();
   const user = userEvent.setup();
-  await user.type(await screen.findByRole("textbox", { name: t("imageStudio.prompt") }), "Untouched settings");
+  await user.type(await screen.findByRole("textbox", { name: t("videoStudio.shotDescription") }), "Untouched settings");
   const history = within(screen.getByRole("complementary", { name: t("imageStudio.history") }));
   await user.click(await history.findByRole("button", { name: /Original saved prompt/ }));
   expect(prompt()).toHaveValue(SAVED.prompt);
@@ -436,7 +490,7 @@ it("ignores a delayed restore after typing and clears unsaved drafts on sign-out
   await screen.findByRole("heading", { name: "Signed out" });
   first.unmount();
   show();
-  expect(await screen.findByRole("textbox", { name: t("imageStudio.prompt") })).toHaveValue("");
+  expect(await screen.findByRole("textbox", { name: t("videoStudio.shotDescription") })).toHaveValue("");
 });
 
 it("preserves mixed exact versions across prompt-only selection, HEAD-checked restore, and a lost receipt", async () => {
@@ -474,11 +528,18 @@ it("preserves mixed exact versions across prompt-only selection, HEAD-checked re
     references: refs,
   };
   const uploaded = { ...refs[0]!, versionId: "new-image-version", assetId: "new-image-asset" };
+  let finishUpload!: () => void;
+  const uploadReceipt = new Promise<void>(resolve => {
+    finishUpload = resolve;
+  });
   const head = vi.fn();
   const submitted: { key: string | null; body: string }[] = [];
   const fetchWithMsw = globalThis.fetch;
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-    if (input === `${BASE}/references/IMAGE`) return HttpResponse.json(uploaded, { status: 201 });
+    if (input === `${BASE}/references/IMAGE`) {
+      await uploadReceipt;
+      return HttpResponse.json(uploaded, { status: 201 });
+    }
     return fetchWithMsw(input, init);
   });
   server.use(
@@ -498,6 +559,12 @@ it("preserves mixed exact versions across prompt-only selection, HEAD-checked re
   const user = userEvent.setup();
   const upload = await screen.findByLabelText(`${t("media.runningHub.uploadNamed", { 0: t("common.image") })} (0/1)`);
   await user.upload(upload, new File(["synthetic"], "replacement.png", { type: "image/png" }));
+  try {
+    await user.click(await screen.findByRole("button", { name: /Original saved prompt/ }));
+    expect(prompt()).toHaveValue("");
+  } finally {
+    finishUpload();
+  }
   const image = t("templates.numberedImage", { 0: 1 });
   expect(await screen.findByRole("img", { name: image })).toHaveAttribute(
     "src",
@@ -627,4 +694,146 @@ it("binds a named reference to its workflow slot and confirms when a parameter w
       references: [{ kind: "VIDEO", versionId: clip.versionId, fieldKey: "clip" }],
     }),
   );
+});
+
+it("keeps keyboard focus on the generate action while submitting and reconciling a lost receipt", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  const submissions: { key: string | null; body: string }[] = [];
+  server.use(
+    http.post(`${BASE}/generations`, async ({ request }) => {
+      submissions.push({ key: request.headers.get("Idempotency-Key"), body: await request.text() });
+      if (submissions.length === 1) {
+        await gate;
+        return HttpResponse.error();
+      }
+      return HttpResponse.json(SAVED, { status: 201 });
+    }),
+    http.get(`${BASE}/generations/${SAVED.id}`, () => HttpResponse.json(SAVED)),
+  );
+  show();
+  const user = userEvent.setup();
+  await user.type(await screen.findByRole("textbox", { name: t("videoStudio.shotDescription") }), "A slow pan");
+  const button = generate();
+  await waitFor(() => expect(button).toBeEnabled());
+  button.focus();
+  try {
+    await user.keyboard("{Enter}");
+    const busy = await screen.findByRole("status", { name: t("videoStudio.submitting") });
+    expect(busy.parentElement?.parentElement).toContainElement(button);
+    expect(button).toHaveFocus();
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(submissions).toHaveLength(1));
+  } finally {
+    release();
+  }
+  const retry = await screen.findByRole("button", { name: t("imageStudio.retryAcceptance") });
+  expect(retry).toBe(button);
+  expect(retry).toHaveFocus();
+  expect(retry).toHaveAccessibleDescription(expect.stringContaining(t("videoStudio.acceptanceUncertainHint")));
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(submissions).toHaveLength(2));
+  expect(submissions[1]).toEqual(submissions[0]);
+});
+
+it("announces only a manual refresh and ignores repeated activation while reads are pending", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  let reads = 0;
+  server.use(
+    http.get(`${BASE}/context`, async () => {
+      reads++;
+      if (reads > 1) await gate;
+      return catalog();
+    }),
+  );
+  show();
+  const user = userEvent.setup();
+  await screen.findByRole("combobox", { name: t("common.model") });
+  const refresh = screen.getByRole("button", { name: t("imageStudio.refresh") });
+  await user.click(refresh);
+  try {
+    await screen.findByRole("button", { name: t("common.refreshing") });
+    expect(refresh).toHaveAttribute("aria-busy", "true");
+    await user.keyboard("{Enter}");
+    expect(reads).toBe(2);
+  } finally {
+    release();
+  }
+  await waitFor(() => expect(refresh).toHaveAccessibleName(t("imageStudio.refresh")));
+  expect(refresh).toHaveFocus();
+});
+
+it("summarizes published frame shapes without changing opaque option values", async () => {
+  const model: VideoStudioCapability = {
+    ...MODEL,
+    modes: ["TEXT"],
+    aspectRatios: [],
+    defaultAspectRatio: null,
+    defaultDynamicValues: { shape: "tall" },
+    fields: [
+      {
+        key: "shape",
+        label: "Frame shape",
+        type: "SELECT",
+        source: "PARAMETER",
+        required: true,
+        advanced: false,
+        options: [
+          { value: "wide", label: "16:9 (Landscape Widescreen)" },
+          { value: "tall", label: "9:16 (Portrait Widescreen)" },
+        ],
+        defaultValue: "tall",
+      },
+    ],
+  };
+  const posted = vi.fn();
+  server.use(
+    http.get(`${BASE}/context`, () => catalog([model])),
+    http.post(`${BASE}/generations`, async ({ request }) => {
+      posted(await request.json());
+      return HttpResponse.json(SAVED, { status: 201 });
+    }),
+    http.get(`${BASE}/generations/${SAVED.id}`, () => HttpResponse.json(SAVED)),
+  );
+  show();
+  const user = userEvent.setup();
+  expect(await screen.findByText(/^9:16 · /)).toBeVisible();
+  await select(user, "Frame shape *", /16:9/);
+  expect(screen.getByText(/^16:9 · /)).toBeVisible();
+  await user.click(generate());
+  await waitFor(() =>
+    expect(posted).toHaveBeenCalledWith(expect.objectContaining({ dynamicValues: { shape: "wide" } })),
+  );
+});
+
+it("keeps the current video open when a newer history entry arrives in the background", async () => {
+  const latest = { ...SAVED, id: "remote-video", prompt: "New from another window" };
+  server.use(
+    http.get(`${BASE}/generations`, () => page([SAVED])),
+    http.get(`${BASE}/generations/:id`, ({ params }) => HttpResponse.json(params.id === latest.id ? latest : SAVED)),
+  );
+  const client = createQueryClient();
+  show(client);
+  const label = t("videoStudio.resultTitle");
+  const initial = await screen.findByLabelText<HTMLVideoElement>(label, { selector: "video" });
+  initial.currentTime = 2;
+  act(() => {
+    client.setQueryData(["video-studio", "owner", "history"], {
+      pages: [{ items: [latest, SAVED], nextCursor: null }],
+      pageParams: [undefined],
+    });
+  });
+  const next = await screen.findByRole("button", { name: /New from another window/ });
+  expect(next).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByLabelText(label, { selector: "video" })).toBe(initial);
+  expect(initial.currentTime).toBe(2);
+  await userEvent.click(next);
+  await waitFor(() => expect(next).toHaveAttribute("aria-pressed", "true"));
+  expect(prompt()).toHaveValue(latest.prompt);
 });

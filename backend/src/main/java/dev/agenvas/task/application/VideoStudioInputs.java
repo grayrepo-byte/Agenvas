@@ -71,7 +71,8 @@ class VideoStudioInputs {
         // A duration-filtered catalog (including duration 0) would omit otherwise valid models.
         var catalog = capabilities.publishedCandidates().stream()
                 .filter(candidate -> candidate.kind() == Task.Kind.VIDEO_GENERATION)
-                .map(candidate -> capability(candidate.binding(), candidate.capabilityName(), candidate.connectionName(),
+                .map(candidate -> capability(candidate.binding(), candidate.capabilityName(),
+                        candidate.connectionName(),
                         candidate.settings()))
                 .filter(java.util.Objects::nonNull).toList();
         UUID preferred = capabilities.defaultCapabilityId(Task.Kind.VIDEO_GENERATION);
@@ -109,8 +110,11 @@ class VideoStudioInputs {
             return null;
         VideoInputMode defaultMode = modes.stream().filter(mode -> mode.name().equals(policy.defaultVideoInputMode()))
                 .findFirst().orElse(modes.getFirst());
-        var duration = fields == null ? null : fields.stream()
-                .filter(field -> hasSource(field, RunningHubDefinition.Source.DURATION_SECONDS)).findFirst().orElse(null);
+        var duration = fields == null
+                ? null
+                : fields.stream()
+                        .filter(field -> hasSource(field, RunningHubDefinition.Source.DURATION_SECONDS)).findFirst()
+                        .orElse(null);
         boolean namedComfy = fields != null && policy.platform() == MediaPlatform.COMFYUI;
         boolean adjustableDuration = fields == null || duration != null || namedComfy;
         int min = Math.max(1, policy.minimumSeconds());
@@ -121,7 +125,8 @@ class VideoStudioInputs {
         }
         if (adjustableDuration && min > max)
             return null;
-        int seconds = duration != null && duration.hasNonNull("defaultValue") ? duration.path("defaultValue").asInt()
+        int seconds = duration != null && duration.hasNonNull("defaultValue")
+                ? duration.path("defaultValue").asInt()
                 : settings.path("defaultDurationSeconds").asInt(min);
         if (duration != null && "SELECT".equals(duration.path("type").asText())) {
             final int lower = min;
@@ -138,8 +143,10 @@ class VideoStudioInputs {
                 .maps(ComfyUiWorkflowDefinition.Source.WIDTH);
         JsonNode defaults = settings.path("defaultParameters");
         var resolutions = resolutions(adapter, settings, fields);
-        String defaultResolution = resolutions.isEmpty() ? null
-                : defaults.path("videoResolution").asText(settings.path("videoResolution").asText(resolutions.getFirst()));
+        String defaultResolution = resolutions.isEmpty()
+                ? null
+                : defaults.path("videoResolution")
+                        .asText(settings.path("videoResolution").asText(resolutions.getFirst()));
         ObjectNode dynamicDefaults = mapper.createObjectNode();
         if (fields != null)
             for (JsonNode field : fields) {
@@ -148,7 +155,8 @@ class VideoStudioInputs {
                     dynamicDefaults.set(key, defaults.path(RunningHubDefinition.VALUES_PROPERTY).get(key));
             }
         return new VideoStudioService.Capability(binding.capabilityId(), binding.capabilityVersion(), name,
-                connectionName, adapter, List.copyOf(modes), defaultMode, tail && modes.contains(VideoInputMode.START_END),
+                connectionName, adapter, List.copyOf(modes), defaultMode,
+                tail && modes.contains(VideoInputMode.START_END),
                 requiresTail, adjustableDuration ? min : null, adjustableDuration ? max : null,
                 adjustableDuration ? Math.clamp(seconds, min, max) : null, adjustableRatio ? RATIOS : List.of(),
                 adjustableRatio ? physicalRatio(defaults.path("aspectRatio").asText("AUTO")) : null,
@@ -229,8 +237,11 @@ class VideoStudioInputs {
                     throw invalid();
             }
         }
-        String ratio = command.aspectRatio() == null ? controls.defaultAspectRatio() : physicalRatio(command.aspectRatio());
-        String resolution = command.videoResolution() == null ? controls.defaultVideoResolution()
+        String ratio = command.aspectRatio() == null
+                ? controls.defaultAspectRatio()
+                : physicalRatio(command.aspectRatio());
+        String resolution = command.videoResolution() == null
+                ? controls.defaultVideoResolution()
                 : command.videoResolution();
         if (ratio != null && !controls.aspectRatios().contains(ratio)
                 || resolution != null && !controls.videoResolutions().contains(resolution))
@@ -292,7 +303,8 @@ class VideoStudioInputs {
         }
         if (!values.isEmpty())
             parameters.set(RunningHubDefinition.VALUES_PROPERTY, values);
-        var draft = new MediaDraft(project, null, command.prompt().strip(), parameters, duration, binding.capabilityId(),
+        var draft = new MediaDraft(project, null, command.prompt().strip(), parameters, duration,
+                binding.capabilityId(),
                 null, command.mode(), refs, List.of(), MediaDraft.DisplayMode.DRAFT, 0, Instant.EPOCH, Instant.EPOCH);
         var compiled = generation.prepareStudioVideo(owner, project, draft, binding);
         return new Prepared(binding, compiled, ratio, first, last, List.copyOf(references));
@@ -303,7 +315,8 @@ class VideoStudioInputs {
     }
 
     private static boolean scalarParameter(JsonNode field) {
-        return !mediaField(field) && (!field.hasNonNull("source") || hasSource(field, RunningHubDefinition.Source.PARAMETER));
+        return !mediaField(field)
+                && (!field.hasNonNull("source") || hasSource(field, RunningHubDefinition.Source.PARAMETER));
     }
 
     private static boolean hasSource(JsonNode field, RunningHubDefinition.Source source) {
@@ -332,8 +345,8 @@ class VideoStudioInputs {
     VideoStudioService.ReferenceAsset upload(UUID owner, Asset.MediaKind kind, InputStream input) {
         UUID project = projects.ensureVideoStudioScope(owner).id();
         // Decode and install outside the DB transaction; rejected uploads leave no registered asset or artifact.
-        java.util.function.Function<Asset, VideoStudioService.ReferenceAsset> publish = asset ->
-                events.recordChange(owner, project, () -> {
+        java.util.function.Function<Asset, VideoStudioService.ReferenceAsset> publish = asset -> events
+                .recordChange(owner, project, () -> {
                     assets.registerLibraryImport(owner, asset);
                     var artifact = artifacts.create(owner, project, Artifact.Kind.valueOf(kind.name()),
                             "Video Studio reference", mapper.createObjectNode()
@@ -342,7 +355,8 @@ class VideoStudioInputs {
                     return ProjectEventService.Change.unchanged(
                             toReference(project, artifact.resourceDefaultVersion(), asset, null));
                 }).value();
-        return kind == Asset.MediaKind.IMAGE ? assets.withPreparedStaticImageUpload(owner, project, input, publish)
+        return kind == Asset.MediaKind.IMAGE
+                ? assets.withPreparedStaticImageUpload(owner, project, input, publish)
                 : assets.withPreparedUpload(owner, project, UUID.randomUUID(), kind, () -> input, publish);
     }
 
@@ -356,7 +370,8 @@ class VideoStudioInputs {
                 Artifact.Kind.valueOf(kind.name()));
         if (artifacts.get(owner, project, version.artifactId()).artifact().archivedAt() != null)
             throw invalid();
-        Asset asset = assets.requireReadyMedia(owner, project, UUID.fromString(version.content().path("assetId").asText()),
+        Asset asset = assets.requireReadyMedia(owner, project,
+                UUID.fromString(version.content().path("assetId").asText()),
                 kind);
         if (kind == Asset.MediaKind.IMAGE)
             ImageGenerationPreparation.requireStaticImage(asset);
@@ -378,11 +393,13 @@ class VideoStudioInputs {
     }
 
     static ApiProblemException invalid() {
-        return new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.video-studio.title"),
+        return new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
+                ApiMessage.of("api.video-studio.title"),
                 ApiMessage.of("api.video-studio.invalid-request"), false);
     }
 
     record Prepared(MediaCapabilityBinding binding, DirectMediaTaskService.StudioPreparation compiled, String ratio,
             VideoStudioService.Frame start, VideoStudioService.Frame end,
-            List<VideoStudioService.ReferenceAsset> references) {}
+            List<VideoStudioService.ReferenceAsset> references) {
+    }
 }
